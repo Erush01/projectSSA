@@ -5,7 +5,6 @@ from datetime import datetime
 import numpy as np
 from constants import DATASET_FOLDER
 
-
 def data_splitter(satellite):
     data_array=[]
     track_numbers=[]
