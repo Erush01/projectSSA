@@ -6,6 +6,7 @@ from tqdm import trange,tqdm
 from pathlib import Path
 import os
 from constants import DATASET_FOLDER
+
 def data_size():
     total=0
     for root, dirs, files in os.walk(data_folder):
@@ -32,11 +33,12 @@ def get_data_from_page(soup,data_folder):
 
     pbar = tqdm(links,colour="green")
     for idx,link in enumerate(pbar):
-        with open(f'{data_folder}/satellite-{names[idx]}_{object_classes[idx]}.txt','wb') as f:
+        with open(f'{data_folder}/{object_classes[idx]}/satellite-{names[idx]}_{object_classes[idx]}.txt','wb') as f:
             data_size()
             pbar.set_description(f'Processing << satellite-{names[idx]}_{object_classes[idx]} >> Total Size > {data_size()/1024**2:.2f} MB',refresh=True)
             # pbar.set_postfix_str(f'Processing satellite_{names[idx]}.txt')
             f.write(requests.get(link,allow_redirects=True).content)
+
           
             
 if __name__ =='__main__':
