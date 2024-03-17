@@ -5,7 +5,6 @@ from datetime import datetime
 import numpy as np
 from constants import DATASET_FOLDER
 import random
-import seaborn as sns
 
 
 def satellite_info(satellite):
@@ -75,16 +74,21 @@ def dataPlotter(satellite):
     plt.xlabel("Sample #")
     plt.ylabel("Magnitude")
     plt.xticks(rotation=45)
-    plt.xticks(range(0,len(data[idx]),10))
+    plt.xlim(0,500)
     plt.tight_layout()
+    plt.savefig(f'denemera.png',bbox_inches='tight', dpi=200)   # save the figure to file
     plt.show()
+
 
 
 if __name__=='__main__':
     DATA_FOLDER=DATASET_FOLDER
-    satellite_datas=os.listdir(DATA_FOLDER)
-    satellite=os.path.join(DATA_FOLDER,random.choice(satellite_datas))
-    satellite1="/media/erush/data/SSADataset/satellite-7042_U-SAT.txt"
+    satellite_folder=sorted(os.listdir(DATA_FOLDER))
+    print(satellite_folder)
+    folder=satellite_folder[7]
+    folder_path=os.path.join(DATA_FOLDER,folder)
+    satellite=os.path.join(folder_path,os.listdir(folder_path)[0])    
+    # satellite1="/media/erush/data/SSADataset/ACT/satellite-1319_ACT.txt"
     # print(satellite)
     dataPlotter(satellite)
 
