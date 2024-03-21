@@ -9,6 +9,7 @@ import random
 from scipy.fft import fft, fftfreq
 from kymatio.numpy import Scattering1D,Scattering2D
 from kymatio.datasets import fetch_fsdd
+import pywt
 
 # folder="/home/erush/projectSSA/lca_comparison"
 
@@ -58,27 +59,39 @@ def class_comparison_plot(classNames,satellites):
 def main_class_comparison_plot():
     main_classes=['SATELLITE','ROCKETBODY','DEBRIS']
     colors=['red','blue','green']
-    fig = plt.figure()
-    ax = fig.add_subplot(1,1,1)
+    fig, axs = plt.subplots(3)
     for idx,cls in enumerate(main_classes):
         folder_path=os.path.join(DATASET_FOLDER,cls)
         folder=sorted(os.listdir(folder_path))
         color=colors[idx]
-        ax.plot([],[],color=color,label=cls)
-        for i in range(min(3,len(folder))):
+        axs[0].plot([],[],color=color,label=cls)
+        axs[0].set_title('Original')
+        axs[1].plot([],[],color=color,label=cls)
+        axs[1].set_title('cA')
+        axs[2].plot([],[],color=color,label=cls)
+        axs[2].set_title('cD')
+        for i in range(min(7,len(folder))):
             class_name,satellite_name,labels,data,track_numbers=satellite_info(
                 os.path.join(folder_path,folder[i]))
-            for j in range(min(5,len(data))):
-                ax.set_xlim(0,500)
-                ax.plot(data[j],color=color)            
-
-    ax.set_title("Class based satellite plot Mag Values")
-    ax.set_xlabel("Sample #")
-    ax.set_ylabel("Magnitude")
-    plt.legend()
+            for j in range(min(3,len(data))):
+                tempData=data[j]
+                axs[0].set_xlim(0,50)
+                axs[1].set_xlim(0,50)
+                axs[2].set_xlim(0,50)
+                cA,cD=wwt_transform(tempData)
+                axs[0].scatter(tempData,color=color)
+                axs[1].scatter(cA,color=color)            
+                axs[2].scatter(cD,color=color)
+                
+    fig.suptitle("Discrete Wavelet Transform")
+    # fig.xlabel("Sample #")
+    # fig.set_ylabel("Magnitude")
+    axs[0].legend()
+    axs[1].legend()
+    axs[2].legend()
     plt.gcf().set_size_inches(16, 9)
-    plt.savefig(f'MainClassesPlots-35.png',bbox_inches='tight', dpi=200)   # save the figure to file
-    # plt.show()
+    plt.savefig(f'MainClassesWWTPlots-bior3.3-symmetric.png',bbox_inches='tight', dpi=200)   # save the figure to file
+    plt.show()
         
 
 def spectogram_analysis(satellite):
@@ -137,13 +150,14 @@ def all_sat_spectogram_plotter(satellite):
     plt.close()
 
 
-def wavelet_transform(satellite):
+def wavelet_transform_plot(satellite):
     class_name,satellite_name,labels,data,track_numbers=satellite_info(satellite)
     x=np.array(data[0])
     x=x/np.max(abs(x))
     T=x.shape[-1]
+    print(T)
     J=6
-    Q=16
+    Q=(32,2)
     scattering=Scattering1D(J,T,Q)
     Sx=scattering(x)
     meta = scattering.meta()
@@ -159,6 +173,36 @@ def wavelet_transform(satellite):
     axs[3].plot(x)
     plt.show()
 
+def wavelet_transform(data):
+    x=np.array(data)
+    x=x/np.max(abs(x))
+    T=x.shape[-1]
+    
+    J=6
+    Q=16
+    scattering=Scattering1D(J,T,Q)
+    Sx=scattering(x)
+    meta = scattering.meta()
+    order0 = np.where(meta['order'] == 0)
+    order1 = np.where(meta['order'] == 1)
+    order2 = np.where(meta['order'] == 2)
+    return Sx[order0][0]
+
+def wwt_transform(data):
+    
+    w=pywt.Wavelet('bior3.3')
+    cA,cD=pywt.dwt(data,wavelet=w,mode='symmetric')
+    # fig, axs = plt.subplots(3)
+    # axs[0].plot(cA)
+    # axs[0].set_title('cA')
+    # axs[1].plot(cD)
+    # axs[1].set_title('cD')
+    # axs[2].plot(data[0])
+    # axs[2].set_title('Original')
+    return cA,cD
+    plt.show()
+
+    
 if __name__ =='__main__':
     plot_save_folder='rapor_plots'
     classNames=sorted(os.listdir(DATASET_FOLDER))
@@ -172,8 +216,8 @@ if __name__ =='__main__':
     unident_sat=os.listdir(os.path.join(DATASET_FOLDER,classNames[6]))
     satellites=[act_sat,fdeb_sat,inact_sat,mdeb_sat,rb_sat,usat_sat,unident_sat]
     
-    wavelet_transform(os.path.join(DATASET_FOLDER,f"{classNames[2]}/{satellites[2][0]}"))
-    # main_class_comparison_plot()
+    # wwt_transform(os.path.join(DATASET_FOLDER,f"{classNames[2]}/{satellites[2][0]}"))
+    main_class_comparison_plot()
     # fft_analysis()
     
     
