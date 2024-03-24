@@ -1,16 +1,19 @@
 import os
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from data_parser import data_splitter,satellite_info
-from constants import DATASET_FOLDER
+from constants import DATASET_FOLDER,PERIODIC_FOLDER
 import numpy as np
-import random
 from scipy.fft import fft, fftfreq
+from scipy.signal import spectrogram,periodogram
+
 from kymatio.numpy import Scattering1D,Scattering2D
 from kymatio.datasets import fetch_fsdd
 import pywt
 from tqdm import tqdm
-from data_parser import satellite_info
+import lightkurve as lk
+
+import librosa
+import librosa.display
+
 
 class MiniMegaTortora():
     
@@ -21,8 +24,10 @@ class MiniMegaTortora():
         self.satellites={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[]}
         self.satelliteData={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[]}
         self.satelliteNumber=satNumber
+        self.DATASET_FOLDER=PERIODIC_FOLDER
         self.db_info()
         self.read_satellites()
+        self.sample=self.satelliteData["DEBRIS"][0]
         
     def __repr__(self):
         return (f"SATELLITE Number:{len(self.satellites['SATELLITE'])}\n"
@@ -31,7 +36,7 @@ class MiniMegaTortora():
                 
     def db_info(self):
         for cls in self.mainClasses:
-            folder=os.path.join(DATASET_FOLDER,cls)
+            folder=os.path.join(self.DATASET_FOLDER,cls)
             for file in sorted(os.listdir(folder)):
                 self.satellites[cls].append(file)
     
@@ -41,7 +46,7 @@ class MiniMegaTortora():
         pbar = tqdm(self.mainClasses,colour="green")
         for cls in pbar: #SAT-R/B-DB
             pbar.set_description(f'Processing << {cls} >>' ,refresh=True)
-            folder=os.path.join(DATASET_FOLDER,cls)
+            folder=os.path.join(self.DATASET_FOLDER,cls)
             for idx in range(min(len(self.satellites[cls]),satNum)):
                 name=self.satellites[cls][idx]
                 class_name=name.split('_')[-1].split('.')[0]
@@ -79,6 +84,7 @@ class MiniMegaTortora():
         plt.gcf().set_size_inches(16, 9)
         # plt.savefig(f'rapor_plots/spectogram_plots/{satellite_name}-{class_name}-{Fs}-{track_numbers[idx]}.png',bbox_inches='tight', dpi=200)   # save the figure to file
         plt.show()
+        plt.close()
         
     def plot_tracks(self,cls,idx=0,nTracks=1,plotAll=False):
         
@@ -132,8 +138,49 @@ class MiniMegaTortora():
         plt.close()
         
     
+    def spectogram_analysis_1(self,cls):
+        sat=self.sample
+        name=sat["name"]
+        label=sat["class"]
+        data=np.array(sat["data"][0])
+        
+        data.reshape(-1)
+        sR=10
+        stft=librosa.stft(data,n_fft=256)
+        spectrogram=np.abs(stft)
+        
+        plt.figure(figsize=(12, 6))
+        librosa.display.specshow(librosa.amplitude_to_db(spectrogram, ref=np.max), sr=sR, x_axis='time', y_axis='log')
+        plt.colorbar(format='%+2.0f dB')
+        plt.title('Spectrogram')
+        plt.tight_layout()
+        plt.show()
+        
+    
+    def light_kurwa(self):
+        sat=self.sample
+        name=sat["name"]
+        label=sat["class"]
+        data=np.array(sat["data"][0])
+        
+        lc=lk.LightCurve(time=range(len(data)),flux=data).to_periodogram('ls').plot()
+
+        # lc=lc.flatten(window_length=401)
+        plt.show()
+    
+    def periodogram_analysis(self):
+        sat=self.sample
+        name=sat["name"]
+        label=sat["class"]
+        data=np.array(sat["data"][0])
+        
+        f, Pxx_den=periodogram(data,fs=10)
+        plt.semilogy(f, Pxx_den)
+        plt.show()
         
 if __name__ == "__main__":
     mmt=MiniMegaTortora(satNumber=1)
     # mmt.plot_tracks("ROCKETBODY",plotAll=True)
-    mmt.plot_class_comparison(nTracks=3)
+    # mmt.plot_class_comparison(nTracks=5,nSats=3)
+    # mmt.light_kurwa()
+    # mmt.periodogram_analysis()

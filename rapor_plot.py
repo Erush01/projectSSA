@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from data_parser import data_splitter,satellite_info
 from constants import DATASET_FOLDER
-# from scipy.signal import spectrogram,ShortTimeFFT
+#from scipy.signal import spectrogram,ShortTimeFFT
 import numpy as np
 import random
 from scipy.fft import fft, fftfreq
