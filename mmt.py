@@ -14,6 +14,7 @@ import lightkurve as lk
 import librosa
 import librosa.display
 
+from astropy.timeseries import LombScargle
 
 class MiniMegaTortora():
     
@@ -27,7 +28,7 @@ class MiniMegaTortora():
         self.DATASET_FOLDER=PERIODIC_FOLDER
         self.db_info()
         self.read_satellites()
-        self.sample=self.satelliteData["DEBRIS"][0]
+        self.sample=self.satelliteData["ROCKETBODY"][0]
         
     def __repr__(self):
         return (f"SATELLITE Number:{len(self.satellites['SATELLITE'])}\n"
@@ -178,9 +179,46 @@ class MiniMegaTortora():
         plt.semilogy(f, Pxx_den)
         plt.show()
         
+    def periodogram_analysis_2(self):
+        sat=self.sample
+        name=sat["name"]
+        label=sat["class"]
+        data=np.array(sat["data"][0])
+        
+        t=range(len(data))
+        frequency,power = LombScargle(t,data).autopower()
+        
+        plt.plot(frequency,power)
+        plt.show()
+    
+    
+    def discreteWaveletTransform(self):
+        sat=self.sample
+        name=sat["name"]
+        label=sat["class"]
+        data=np.array(sat["data"][2])
+        w=pywt.Wavelet('dmey')
+        cA,cD= pywt.dwt(data,w,'constant')
+        fig, axs = plt.subplots(3)
+        axs[0].plot(data,marker='o',linewidth=1.2,markersize=3)
+        axs[0].set_title('Original')
+        axs[1].plot(cA,marker='o',linewidth=1.2,markersize=3)
+        axs[1].set_title('cA')
+        axs[2].plot(cD,marker='o',linewidth=1.2,markersize=3)
+        axs[2].set_title('cD')
+        plt.xticks(rotation=45)
+
+        plt.gcf().set_size_inches(16, 9)    
+        
+        plt.show()
+        
+    
+
+        
 if __name__ == "__main__":
     mmt=MiniMegaTortora(satNumber=1)
     # mmt.plot_tracks("ROCKETBODY",plotAll=True)
     # mmt.plot_class_comparison(nTracks=5,nSats=3)
     # mmt.light_kurwa()
-    # mmt.periodogram_analysis()
+    mmt.discreteWaveletTransform()
+    
