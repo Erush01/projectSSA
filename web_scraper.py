@@ -118,7 +118,7 @@ if __name__ =='__main__':
 
     main_url="http://mmt.favor2.info"
     url='http://mmt.favor2.info/satellites?page='
-    data_folder=os.path.join(DATASET_FOLDER,'periodic')
+    data_folder=os.path.join(DATASET_FOLDER,'Periodic')
 
     classes=['U/SAT','ACT','INACT','R/B','DEB','M/DEB','F/DEB','UNIDENT']
     database_pages=1077

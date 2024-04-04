@@ -11,8 +11,6 @@ from kymatio.numpy import Scattering1D,Scattering2D
 from kymatio.datasets import fetch_fsdd
 import pywt
 
-# folder="/home/erush/projectSSA/lca_comparison"
-
 def all_sat_plotter(satellite):
     
     class_name,satellite_name,labels,data,track_numbers=satellite_info(satellite)
