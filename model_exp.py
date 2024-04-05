@@ -18,7 +18,7 @@ assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
 config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 
-mmt=MiniMegaTortora(satNumber=2)
+mmt=MiniMegaTortora(satNumber=20)
 classes=[[x] for x in mmt.satelliteData]#Main classes
 dataset=list()
 #Add all satellites from each class to bigger set
