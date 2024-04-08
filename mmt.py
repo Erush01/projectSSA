@@ -4,7 +4,7 @@ from constants import DATASET_FOLDER,PERIODIC_FOLDER,NONPERIODIC_FOLDER,PERIODIC
 import numpy as np
 from scipy.fft import fft, fftfreq
 from scipy.signal import spectrogram,periodogram
-
+import pandas as pd
 from kymatio.numpy import Scattering1D,Scattering2D
 from kymatio.datasets import fetch_fsdd
 import pywt
@@ -25,27 +25,37 @@ class MiniMegaTortora():
         self.mainClasses = ['SATELLITE','ROCKETBODY','DEBRIS']
         self.satellites={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[]}
         self.satelliteData={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[]}
+        self.trackNumbers={"SATELLITE":0,"ROCKETBODY":0,"DEBRIS":0}
         self.satelliteNumber=satNumber
+        self.column=['Date','Time','StdMag','Mag','Filter','Penumbra','Distance','Phase','Channel','Track']
+
         if periodic:self.DATASET_FOLDER=PERIODIC_FOLDER_FAST
         else:self.DATASET_FOLDER=NONPERIODIC_FOLDER
         self.db_info()
         self.read_satellites()
+        self.get_track_numbers()
         self.sample=None
+        
+        
     def __repr__(self):
-        return (f"SATELLITE Number:{len(self.satellites['SATELLITE'])}\n"
-                f"{[x['name'] for x in self.satelliteData['SATELLITE']]}\n"
-                f"ROCKETBODY Number: {len(self.satellites['ROCKETBODY'])}\n"
-                f"{[x['name'] for x in self.satelliteData['ROCKETBODY']]}\n"
-                f"DEBRIS Number: {len(self.satellites['DEBRIS'])}\n"
-                f"{[x['name'] for x in self.satelliteData['DEBRIS']]}")
+        return (f"SATELLITE Number:{len(self.satelliteData['SATELLITE'])}\n"
+                f"SATELLITE track number: {self.trackNumbers['SATELLITE']}\n"
+                f"ROCKETBODY Number: {len(self.satelliteData['ROCKETBODY'])}\n"
+                f"ROCKETBODY track number: {self.trackNumbers['ROCKETBODY']}\n"
+                f"DEBRIS Number: {len(self.satelliteData['DEBRIS'])}\n"
+                f"DEBRIS track number: {self.trackNumbers['DEBRIS']}\n")
 
-                
     def db_info(self):
         for cls in self.mainClasses:
             folder=os.path.join(self.DATASET_FOLDER,cls)
             for file in sorted(os.listdir(folder)):
                 self.satellites[cls].append(file)
     
+    def get_track_numbers(self):
+        for i in self.satelliteData:
+            for sat in self.satelliteData[i]:
+                self.trackNumbers[i]+=len(sat['data'])
+                
                 
     def read_satellites(self):
         satNum=self.satelliteNumber
@@ -62,7 +72,7 @@ class MiniMegaTortora():
                     dataPart=allFile[7:]
                     trackNums=sorted(set([x.split(' ')[9].replace('\n','') for x in dataPart]))
                     all_data=[[]*x for x in range(len(trackNums))]
-
+                    
                     for i in dataPart:
                         apperentMag=i.split(' ')[3] #Magnitude, #[2] for standard mag
                         trackNum=i.split(' ')[9].replace('\n','') #TrackNumber
@@ -70,7 +80,33 @@ class MiniMegaTortora():
                             if track==trackNum:
                                 all_data[idx].append(float(apperentMag))
                 self.satelliteData[cls].append({"name":satellite_name,"class":cls,"data":all_data})
-                                  
+      
+      
+    def read_satellites2(self):
+        satNum=self.satelliteNumber
+        pbar = tqdm(self.mainClasses,colour="green")
+        for cls in pbar: #SAT-R/B-DB
+            pbar.set_description(f'Processing << {cls} >>' ,refresh=True)
+            folder=os.path.join(self.DATASET_FOLDER,cls)
+            for idx in range(min(len(self.satellites[cls]),satNum)):
+                name=self.satellites[cls][idx]
+                class_name=name.split('_')[-1].split('.')[0]
+                with open(os.path.join(folder,name)) as f:
+                    allFile=f.readlines()
+                    satellite_name=allFile[:7][0].split("/")[0].split(":")[1]
+                    dataPart=allFile[7:]
+                    data=[[j for j in " ".join(x.split()).split(" ")] for x in dataPart]
+                    df=pd.DataFrame(data,columns=self.column)
+                    trackNums=np.unique(df.get('Track').to_numpy())
+                    all_data=[[]*x for x in range(len(trackNums))]
+                    for idx,i in enumerate(trackNums):
+                        track=df.loc[df['Track']==i].get('Mag').to_numpy(float)
+                        all_data[idx]=track
+                        
+                self.satelliteData[cls].append({"name":satellite_name,"class":cls,"data":all_data})
+         
+                    
+
     def plot_single_track(self,cls=None,idx=0,trackIdx=0):
         
         #Plots one single track from one satellite
@@ -272,12 +308,11 @@ class MiniMegaTortora():
         
     
 if __name__ == "__main__":
-    mmt=MiniMegaTortora(satNumber=10,periodic=False)
+    mmt=MiniMegaTortora(satNumber=1,periodic=True)
     print(mmt)
     # mmt.getSatellitebyName('SATELLITE'," 37165 YAOGAN 11 ")
-    # mmt.plot_single_track(trackIdx=4)
+    mmt.plot_single_track("SATELLITE",trackIdx=4)
     # mmt.plot_class_comparison(nTracks=2,nSats=1),
-    mmt.discreteWaveletTransform("SATELLITE"," 51870 STARLINK-3591 ")
     # mmt.class_comparison_subplot()
     # mmt.plot_tracks("SATELLITE",1,5)
     
