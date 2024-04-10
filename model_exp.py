@@ -144,4 +144,3 @@ cm = confusion_matrix(y_test,y_pred)
 disp=ConfusionMatrixDisplay(confusion_matrix=cm,display_labels=np.unique(y_pred_str))
 disp.plot()
 plt.show()
-
