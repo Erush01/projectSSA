@@ -2,12 +2,11 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' #Silence tensorflow
 import tensorflow as tf
+
 import numpy as np
 import random
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split,StratifiedShuffleSplit
-from skmultilearn.model_selection import iterative_train_test_split
-
 from sklearn.preprocessing import StandardScaler,MinMaxScaler
 import matplotlib.pyplot as plt
 import datetime
@@ -16,24 +15,27 @@ from mmt import MiniMegaTortora
 from collections import Counter
 import seaborn as sns
 import pandas as pd
+from rich import print as print_rich
+from rich.panel import Panel
+from rich.table import Table
+from ssa_utils import RichBarCallBack
+from sklearn.utils import class_weight
 #Tensorflow settings
 
-physical_devices = tf.config.experimental.list_physical_devices('GPU')
+physical_devices = tf.test.gpu_device_name()
 assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
-config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
-
+# config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 #Configurations
 satelliteNumber = 20 # Maximum number of satellites for each class in dataset
-trackSize = 500 # Maximum sample points for each track
-epochs = 50 # Number of epochs for training
-batchSize = 50 # batch size for training
+trackSize = 1000 # Maximum sample points for each track
+epochs = 100 # Number of epochs for training
+batchSize = 20 # batch size for training
 
 
 mmt=MiniMegaTortora(satNumber=satelliteNumber,periodic=True)
-print(mmt)
+print_rich(mmt.get_data_rich())
 classes=[[x] for x in mmt.satelliteData]#Main classes
-
 dataset=list()
 #Add all satellites from each class to bigger set
 for i in classes:
@@ -43,7 +45,6 @@ for i in classes:
 #Shuffle dataset
 np.random.shuffle(dataset)
 
-
 x=list()
 y=list()
 
@@ -52,8 +53,7 @@ for i in dataset:
     for data in i['data']:
         y.append([i['class']])
         x.append(data[0:trackSize])
-        
-        
+    
 #Pad tracks to maximum TrackSize
 x=[np.pad(x,((0,trackSize-len(x))),mode='constant') for x in x]
 
@@ -77,42 +77,61 @@ x_train,x_val,y_train,y_val=train_test_split(x_train,y_train,
                                              stratify=y_train)
 
 
+# weights = class_weight.compute_class_weight('balanced',
+#                                             classes=np.unique(cat.inverse_transform(y_train)), 
+#                                             y=[x[0] for x in cat.inverse_transform(y)])                                            
+# class_weights = dict(enumerate(weights))
+# print(class_weights)
+
 
 # Normalization
 scaler=StandardScaler()
 x_train=scaler.fit_transform(x_train)
-x_val=scaler.fit_transform(x_val)
-x_test=scaler.fit_transform(x_test)
+x_val=scaler.transform(x_val)
+x_test=scaler.transform(x_test)
 
 #Expanding dimension to fit Convolutional layer
-x_train=tf.expand_dims(x_train,axis=-1)
-x_val=tf.expand_dims(x_val,axis=-1)
-x_test=tf.expand_dims(x_test,axis=-1)
+x_train=np.expand_dims(x_train,axis=-1)
+x_val=np.expand_dims(x_val,axis=-1)
+x_test=np.expand_dims(x_test,axis=-1)
 
-#Model 
-model=tf.keras.models.Sequential([
+train_table=Table.grid()
+train_table.add_row(
+            Panel.fit(
+                f"[bold green]X: [white]{x_train.shape}\n"
+                f"[bold green]Y: [white]{y_train.shape}\n",
+                title="[b]Train", border_style="green", padding=(1, 1)),
+            Panel.fit(
+                f"[bold yellow]X : [white]{x_val.shape}\n"
+                f"[bold yellow]Y : [white]{y_val.shape}\n",
+                title="[b]Validation", border_style="yellow", padding=(1,1)),
+        Panel.fit(f"[bold cyan]X : [white]{x_test.shape}\n"
+                f"[bold cyan] Y : [white]{y_test.shape}\n",
+                title="[b]Test",border_style="cyan", padding=(1, 1)))
+
+print_rich(train_table)
+
+model2=tf.keras.models.Sequential([
     tf.keras.layers.InputLayer(input_shape=(x_train.shape[1],x_train.shape[2])),
-    tf.keras.layers.Conv1D(32,kernel_size=2,activation='relu'),
+    tf.keras.layers.Conv1D(64,2,activation='relu'),
     tf.keras.layers.MaxPool1D(pool_size=(2)),
-    tf.keras.layers.Conv1D(32,kernel_size=2,activation='relu'),
-    tf.keras.layers.MaxPool1D(pool_size=(2)),
+    tf.keras.layers.LSTM(64,return_sequences=True),
     tf.keras.layers.Dropout(0.2),
-    tf.keras.layers.Conv1D(64,kernel_size=2,activation='relu'),
+    tf.keras.layers.Conv1D(64,2,activation='relu'),
     tf.keras.layers.MaxPool1D(pool_size=(2)),
-    tf.keras.layers.Dropout(0.5),
+    tf.keras.layers.LSTM(64,return_sequences=False),
+    tf.keras.layers.Dropout(0.2),
     tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(64,activation='relu'),
-    tf.keras.layers.Dropout(0.2),
     tf.keras.layers.Dense(128,activation='relu'),
-    tf.keras.layers.Dense(3,activation='softmax')]
-)
+    tf.keras.layers.Dropout(0.2),
+    tf.keras.layers.Dense(3,activation='softmax')])
 
 
-model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-              loss=tf.keras.losses.CategoricalCrossentropy(),
+model2.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+              loss=tf.keras.losses.CategoricalFocalCrossentropy(),
               metrics=['acc'])
 
-model.summary()
+model2.summary()
 
 # Logging metrics using tensorboard
 log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -120,24 +139,22 @@ tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram
 
 
 #Training model
-history=model.fit(x=x_train,
+history=model2.fit(x=x_train,
           y=y_train,
           batch_size=batchSize,
           epochs=epochs,
           validation_data=(x_val,y_val),
-          callbacks=[tensorboard_callback]
+          callbacks=[tensorboard_callback],
+          verbose=2
             )
 
-
-
 #Confusion matrix and F1 score
-y_pred=model.predict(x_test)
+y_pred=model2.predict(x_test)
 y_pred_str=cat.inverse_transform(y_pred)
 
 y_pred=np.argmax(y_pred, axis=1)
 y_test=np.argmax(y_test, axis=1)
 
-print(f"Test Size:{y_test.shape[0]}")
 clf_report=classification_report(y_test,y_pred,target_names=np.unique(y_pred_str),output_dict=True)
 sns.heatmap(pd.DataFrame(clf_report).iloc[:-1, :].T, annot=True,cmap='viridis')
 cm = confusion_matrix(y_test,y_pred)

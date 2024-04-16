@@ -1,3 +1,4 @@
+import concurrent.futures
 import os
 import matplotlib.pyplot as plt
 from constants import DATASET_FOLDER,PERIODIC_FOLDER,NONPERIODIC_FOLDER,PERIODIC_FOLDER_FAST
@@ -5,23 +6,54 @@ import numpy as np
 from scipy.fft import fft, fftfreq
 from scipy.signal import spectrogram,periodogram
 import pandas as pd
-from kymatio.numpy import Scattering1D,Scattering2D
-from kymatio.datasets import fetch_fsdd
+
 import pywt
 from tqdm import tqdm
-
+from rich.live import Live
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn,MofNCompleteColumn,TimeElapsedColumn,TaskProgressColumn
+from rich.table import Table
+import rich
+import multiprocessing
+import concurrent
+import time
+import threading
 # import librosa
 # import librosa.display
 
 # from astropy.timeseries import LombScargle
 
-
+job_progress = Progress(
+"{task.description}",
+SpinnerColumn('aesthetic',speed=0.4,style=rich.style.Style(color='yellow')),
+BarColumn(),
+TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+MofNCompleteColumn()
+)
 
 class MiniMegaTortora():
     
     #MMT class for easy plot analysis for dataset
     
     def __init__(self,satNumber=1,periodic=True):
+        job1 = job_progress.add_task("[bold green]SATELLITE",total=satNumber)
+        job2 = job_progress.add_task("[bold yellow]ROCKETBODY", total=satNumber)
+        job3 = job_progress.add_task("[bold cyan]DEBRIS", total=satNumber)
+        total = sum(task.total for task in job_progress.tasks)
+        self.overall_progress = Progress(TextColumn("[progress.description]{task.description}"),
+                                         BarColumn(),
+                                         TaskProgressColumn(),
+                                         MofNCompleteColumn(),
+                                         TimeElapsedColumn())
+        self.overall_task = self.overall_progress.add_task("[b]All RSO's", total=int(total))
+        self.progress_table = Table.grid()
+        self.progress_table.add_row(
+            Panel.fit(
+                self.overall_progress, title="Overall Progress", border_style="green", padding=(2, 2)
+            ),
+            Panel.fit(job_progress, title="[b]Resident Space Objects", border_style="red", padding=(1, 2)),
+        )
+        
         self.mainClasses = ['SATELLITE','ROCKETBODY','DEBRIS']
         self.satellites={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[]}
         self.satelliteData={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[]}
@@ -32,10 +64,9 @@ class MiniMegaTortora():
         if periodic:self.DATASET_FOLDER=PERIODIC_FOLDER_FAST
         else:self.DATASET_FOLDER=NONPERIODIC_FOLDER
         self.db_info()
-        self.read_satellites()
+        self.read_satellites_multiprocess()
         self.get_track_numbers()
-        self.sample=None
-        
+        self.sample=None        
         
     def __repr__(self):
         return (f"SATELLITE Number:{len(self.satelliteData['SATELLITE'])}\n"
@@ -44,7 +75,24 @@ class MiniMegaTortora():
                 f"ROCKETBODY track number: {self.trackNumbers['ROCKETBODY']}\n"
                 f"DEBRIS Number: {len(self.satelliteData['DEBRIS'])}\n"
                 f"DEBRIS track number: {self.trackNumbers['DEBRIS']}\n")
-
+        
+    def get_data_rich(self):
+        progress_table = Table.grid()
+        progress_table.add_row(
+            Panel.fit(
+                f"[bold green]Object Number: [white]{len(self.satelliteData['SATELLITE'])}\n"
+                f"[bold green]Track number: [white]{self.trackNumbers['SATELLITE']}\n",
+                title="[b]Satellite", border_style="green", padding=(1, 1)
+            ),
+            Panel.fit(
+                f"[bold yellow]Object Number: [white]{len(self.satelliteData['ROCKETBODY'])}\n"
+                f"[bold yellow]Track number: [white]{self.trackNumbers['ROCKETBODY']}\n",
+                title="[b]Rocketbody", border_style="yellow", padding=(1,1)),
+        Panel.fit(f"[bold cyan]ObjectNumber: [white]{len(self.satelliteData['DEBRIS'])}\n"
+                f"[bold cyan]Track number: [white]{self.trackNumbers['DEBRIS']}\n",
+                title="[b]Debris",border_style="cyan", padding=(1, 1)))
+        return progress_table
+      
     def db_info(self):
         for cls in self.mainClasses:
             folder=os.path.join(self.DATASET_FOLDER,cls)
@@ -58,55 +106,61 @@ class MiniMegaTortora():
                 
                 
     def read_satellites(self):
-        satNum=self.satelliteNumber
-        pbar = tqdm(self.mainClasses,colour="green")
-        for cls in pbar: #SAT-R/B-DB
-            pbar.set_description(f'Processing << {cls} >>' ,refresh=True)
-            folder=os.path.join(self.DATASET_FOLDER,cls)
-            for idx in range(min(len(self.satellites[cls]),satNum)):
-                name=self.satellites[cls][idx]
-                class_name=name.split('_')[-1].split('.')[0]
-                with open(os.path.join(folder,name)) as f:
-                    allFile=f.readlines()
-                    satellite_name=allFile[:7][0].split("/")[0].split(":")[1]
-                    dataPart=allFile[7:]
-                    trackNums=sorted(set([x.split(' ')[9].replace('\n','') for x in dataPart]))
-                    all_data=[[]*x for x in range(len(trackNums))]
-                    
-                    for i in dataPart:
-                        apperentMag=i.split(' ')[3] #Magnitude, #[2] for standard mag
-                        trackNum=i.split(' ')[9].replace('\n','') #TrackNumber
-                        for idx,track in enumerate(trackNums):
-                            if track==trackNum:
-                                all_data[idx].append(float(apperentMag))
-                self.satelliteData[cls].append({"name":satellite_name,"class":cls,"data":all_data})
-      
-      
-    def read_satellites2(self):
-        satNum=self.satelliteNumber
-        pbar = tqdm(self.mainClasses,colour="green")
-        for cls in pbar: #SAT-R/B-DB
-            pbar.set_description(f'Processing << {cls} >>' ,refresh=True)
-            folder=os.path.join(self.DATASET_FOLDER,cls)
-            for idx in range(min(len(self.satellites[cls]),satNum)):
-                name=self.satellites[cls][idx]
-                class_name=name.split('_')[-1].split('.')[0]
-                with open(os.path.join(folder,name)) as f:
-                    allFile=f.readlines()
-                    satellite_name=allFile[:7][0].split("/")[0].split(":")[1]
-                    dataPart=allFile[7:]
-                    data=[[j for j in " ".join(x.split()).split(" ")] for x in dataPart]
-                    df=pd.DataFrame(data,columns=self.column)
-                    trackNums=np.unique(df.get('Track').to_numpy())
-                    all_data=[[]*x for x in range(len(trackNums))]
-                    for idx,i in enumerate(trackNums):
-                        track=df.loc[df['Track']==i].get('Mag').to_numpy(float)
-                        all_data[idx]=track
+        with Live(self.progress_table, refresh_per_second=10):
+            satNum=self.satelliteNumber
+            for mid,cls in enumerate(self.mainClasses): #SAT-R/B-DB
+                folder=os.path.join(self.DATASET_FOLDER,cls)
+                for idx in range(min(len(self.satellites[cls]),satNum)):
+                    name=self.satellites[cls][idx]
+                    class_name=name.split('_')[-1].split('.')[0]
+                    with open(os.path.join(folder,name)) as f:
+                        allFile=f.readlines()
+                        satellite_name=allFile[:7][0].split("/")[0].split(":")[1]
+                        dataPart=allFile[7:]
+                        trackNums=sorted(set([x.split(' ')[9].replace('\n','') for x in dataPart]))
+                        all_data=[[]*x for x in range(len(trackNums))]
                         
-                self.satelliteData[cls].append({"name":satellite_name,"class":cls,"data":all_data})
-         
-                    
+                        for i in dataPart:
+                            apperentMag=i.split(' ')[3] #Magnitude, #[2] for standard mag
+                            trackNum=i.split(' ')[9].replace('\n','') #TrackNumber
+                            for idx,track in enumerate(trackNums):
+                                if track==trackNum:
+                                    all_data[idx].append(float(apperentMag))
+                    job_progress.advance(task_id=mid)
+                    self.overall_progress.update(self.overall_task,advance=1)
+                    self.satelliteData[cls].append({"name":satellite_name,"class":cls,"data":all_data})
 
+
+    def read_satellites_multiprocess(self): 
+        with Live(self.progress_table, refresh_per_second=10):
+            with concurrent.futures.ThreadPoolExecutor(16) as exe:
+                exe.map(self.multiprocess_read,self.mainClasses)
+              
+                          
+    def multiprocess_read(self,cls):
+        mid=self.mainClasses.index(cls)
+        satNum=self.satelliteNumber
+        folder=os.path.join(self.DATASET_FOLDER,cls)
+        for idx in range(min(len(self.satellites[cls]),satNum)):
+            name=self.satellites[cls][idx]
+            class_name=name.split('_')[-1].split('.')[0]
+            with open(os.path.join(folder,name)) as f:
+                allFile=f.readlines()
+                satellite_name=allFile[:7][0].split("/")[0].split(":")[1]
+                dataPart=allFile[7:]
+                trackNums=sorted(set([x.split(' ')[9].replace('\n','') for x in dataPart]))
+                all_data=[[]*x for x in range(len(trackNums))]
+                
+                for i in dataPart:
+                    apperentMag=i.split(' ')[3] #Magnitude, #[2] for standard mag
+                    trackNum=i.split(' ')[9].replace('\n','') #TrackNumber
+                    for idx,track in enumerate(trackNums):
+                        if track==trackNum:
+                            all_data[idx].append(float(apperentMag))
+            job_progress.advance(task_id=mid)
+            self.overall_progress.update(self.overall_task,advance=1)
+            self.satelliteData[cls].append({"name":satellite_name,"class":cls,"data":all_data})   
+            
     def plot_single_track(self,cls=None,idx=0,trackIdx=0):
         
         #Plots one single track from one satellite
@@ -308,10 +362,12 @@ class MiniMegaTortora():
         
     
 if __name__ == "__main__":
-    mmt=MiniMegaTortora(satNumber=1,periodic=True)
+  
+    
+    mmt=MiniMegaTortora(satNumber=10,periodic=True)
     print(mmt)
     # mmt.getSatellitebyName('SATELLITE'," 37165 YAOGAN 11 ")
-    mmt.plot_single_track("SATELLITE",trackIdx=4)
+    # mmt.plot_single_track("SATELLITE",trackIdx=4)
     # mmt.plot_class_comparison(nTracks=2,nSats=1),
     # mmt.class_comparison_subplot()
     # mmt.plot_tracks("SATELLITE",1,5)
