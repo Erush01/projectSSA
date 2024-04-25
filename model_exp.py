@@ -20,18 +20,22 @@ from rich.panel import Panel
 from rich.table import Table
 from ssa_utils import RichBarCallBack
 from sklearn.utils import class_weight
+import io
+from keras.utils import plot_model
 #Tensorflow settings
 
 physical_devices = tf.test.gpu_device_name()
 assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
-# config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 #Configurations
+
 satelliteNumber = 20 # Maximum number of satellites for each class in dataset
 trackSize = 1000 # Maximum sample points for each track
 epochs = 100 # Number of epochs for training
-batchSize = 20 # batch size for training
+batchSize = 50 # batch size for training
+learning_rate=1e-3
 
+#-------------------------------------------------------
 
 mmt=MiniMegaTortora(satNumber=satelliteNumber,periodic=True)
 print_rich(mmt.get_data_rich())
@@ -60,14 +64,13 @@ x=[np.pad(x,((0,trackSize-len(x))),mode='constant') for x in x]
 #Numpy array conversion        
 x=np.array([np.array(val) for val in x])
 y=np.array(y)
-
 cat=preprocessing.OneHotEncoder().fit(classes)
 y=cat.transform(y).toarray()
 
 # Train-Val-Test split
 x_train,x_test,y_train,y_test=train_test_split(x,y,
                                                shuffle=True,
-                                               test_size=0.2,
+                                               test_size=0.3,
                                                stratify=y)
 
 
@@ -81,7 +84,10 @@ x_train,x_val,y_train,y_val=train_test_split(x_train,y_train,
 #                                             classes=np.unique(cat.inverse_transform(y_train)), 
 #                                             y=[x[0] for x in cat.inverse_transform(y)])                                            
 # class_weights = dict(enumerate(weights))
-# print(class_weights)
+
+# weights = class_weight.compute_sample_weight('balanced', 
+#                                             y=[x[0] for x in cat.inverse_transform(y)])                                            
+# class_weights = dict(enumerate(weights))
 
 
 # Normalization
@@ -111,53 +117,64 @@ train_table.add_row(
 
 print_rich(train_table)
 
-model2=tf.keras.models.Sequential([
+model=tf.keras.models.Sequential([
     tf.keras.layers.InputLayer(input_shape=(x_train.shape[1],x_train.shape[2])),
     tf.keras.layers.Conv1D(64,2,activation='relu'),
     tf.keras.layers.MaxPool1D(pool_size=(2)),
     tf.keras.layers.LSTM(64,return_sequences=True),
     tf.keras.layers.Dropout(0.2),
-    tf.keras.layers.Conv1D(64,2,activation='relu'),
+    tf.keras.layers.Conv1D(128,2,activation='relu'),
     tf.keras.layers.MaxPool1D(pool_size=(2)),
-    tf.keras.layers.LSTM(64,return_sequences=False),
+    tf.keras.layers.LSTM(128,return_sequences=False),
     tf.keras.layers.Dropout(0.2),
     tf.keras.layers.Flatten(),
+    tf.keras.layers.Dense(128,activation='relu'),
+    tf.keras.layers.Dropout(0.2),
     tf.keras.layers.Dense(128,activation='relu'),
     tf.keras.layers.Dropout(0.2),
     tf.keras.layers.Dense(3,activation='softmax')])
 
 
-model2.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
               loss=tf.keras.losses.CategoricalFocalCrossentropy(),
               metrics=['acc'])
 
-model2.summary()
+model.summary()
 
-# Logging metrics using tensorboard
-log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+fileName=f"Epoch:{epochs}-satNum:{satelliteNumber}-Padding:{trackSize}-Lr:{learning_rate}-{model.loss.name}-Weighted"
+fileNameDated=f"Epoch:{epochs}-satNum:{satelliteNumber}-Padding:{trackSize}-Lr:{learning_rate}-{model.loss.name}-NoWeight"+datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+# plot_model(model,f"Model{fileNameDated}.png",show_layer_activations=True,show_shapes=True)
+# Logging metrics using tensorboard"
+log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")+fileName
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
 
 #Training model
-history=model2.fit(x=x_train,
+history=model.fit(x=x_train,
           y=y_train,
           batch_size=batchSize,
           epochs=epochs,
           validation_data=(x_val,y_val),
           callbacks=[tensorboard_callback],
-          verbose=2
+          verbose=2,
             )
 
-#Confusion matrix and F1 score
-y_pred=model2.predict(x_test)
-y_pred_str=cat.inverse_transform(y_pred)
 
+# Confusion matrix and F1 score
+y_pred=model.predict(x_test)
+y_pred_str=cat.inverse_transform(y_pred)
 y_pred=np.argmax(y_pred, axis=1)
 y_test=np.argmax(y_test, axis=1)
 
+fig,axs=plt.subplots(1,2)
 clf_report=classification_report(y_test,y_pred,target_names=np.unique(y_pred_str),output_dict=True)
-sns.heatmap(pd.DataFrame(clf_report).iloc[:-1, :].T, annot=True,cmap='viridis')
+sns.heatmap(pd.DataFrame(clf_report).iloc[:-1, :].T, annot=True,cmap='viridis',ax=axs[1])
 cm = confusion_matrix(y_test,y_pred)
 disp=ConfusionMatrixDisplay(confusion_matrix=cm,display_labels=np.unique(y_pred_str))
-disp.plot()
+disp.plot(ax=axs[0])
+plt.gcf().set_size_inches(16, 9)
+
+
+plt.figtext(0.5, 0.01, fileName, ha="center", fontsize=10, bbox={"facecolor":"blue", "alpha":0.5, "pad":5})
+plt.savefig(f'{fileNameDated}.png',bbox_inches='tight', dpi=200)   # save the figure to file
 plt.show()
