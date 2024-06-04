@@ -5,6 +5,7 @@ from constants import DATASET_FOLDER,PERIODIC_FOLDER,NONPERIODIC_FOLDER,PERIODIC
 import numpy as np
 from scipy.fft import fft, fftfreq
 from scipy.signal import spectrogram,periodogram
+from scipy.interpolate import interp1d
 import pandas as pd
 
 import pywt
@@ -18,6 +19,9 @@ import multiprocessing
 import concurrent
 import time
 import threading
+import random
+from rich.console import Console
+
 # import librosa
 # import librosa.display
 
@@ -35,10 +39,12 @@ class MiniMegaTortora():
     
     #MMT class for easy plot analysis for dataset
     
-    def __init__(self,satNumber=1,periodic=True):
-        job1 = job_progress.add_task("[bold green]SATELLITE",total=satNumber)
-        job2 = job_progress.add_task("[bold yellow]ROCKETBODY", total=satNumber)
-        job3 = job_progress.add_task("[bold cyan]DEBRIS", total=satNumber)
+    def __init__(self,satNumber=[1,1,1],periodic=True):
+        job1 = job_progress.add_task("[bold green]SATELLITE",total=satNumber[0])
+        job2 = job_progress.add_task("[bold yellow]ROCKETBODY", total=satNumber[1])
+        job3 = job_progress.add_task("[bold cyan]DEBRIS", total=satNumber[2])
+        # job4 = job_progress.add_task("[bold magenta]NONROTARY", total=satNumber[3])
+
         total = sum(task.total for task in job_progress.tasks)
         self.overall_progress = Progress(TextColumn("[progress.description]{task.description}"),
                                          BarColumn(),
@@ -58,6 +64,17 @@ class MiniMegaTortora():
         self.satellites={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[]}
         self.satelliteData={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[]}
         self.trackNumbers={"SATELLITE":0,"ROCKETBODY":0,"DEBRIS":0}
+        
+        
+        # self.mainClasses = ['SATELLITE','ROCKETBODY','DEBRIS','NONROTARY']
+
+        # self.satellites={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[],"NONROTARY":[]}
+
+        # self.satelliteData={"SATELLITE":[],"ROCKETBODY":[],"DEBRIS":[],"NONROTARY":[]}
+
+        # self.trackNumbers={"SATELLITE":0,"ROCKETBODY":0,"DEBRIS":0,"NONROTARY":0}
+        
+
         self.satelliteNumber=satNumber
         self.column=['Date','Time','StdMag','Mag','Filter','Penumbra','Distance','Phase','Channel','Track']
 
@@ -76,6 +93,16 @@ class MiniMegaTortora():
                 f"DEBRIS Number: {len(self.satelliteData['DEBRIS'])}\n"
                 f"DEBRIS track number: {self.trackNumbers['DEBRIS']}\n")
         
+    def get_data(self):
+        return (f"SATELLITE Number:{len(self.satelliteData['SATELLITE'])}\n"
+                f"SATELLITE track number: {self.trackNumbers['SATELLITE']}\n"
+                f"ROCKETBODY Number: {len(self.satelliteData['ROCKETBODY'])}\n"
+                f"ROCKETBODY track number: {self.trackNumbers['ROCKETBODY']}\n"
+                f"DEBRIS Number: {len(self.satelliteData['DEBRIS'])}\n"
+                f"DEBRIS track number: {self.trackNumbers['DEBRIS']}\n")
+                # f"NONROTARY Number: {len(self.satelliteData['NONROTARY'])}\n"
+                # f"NONROTARY track number: {self.trackNumbers['NONROTARY']}\n")
+        
     def get_data_rich(self):
         progress_table = Table.grid()
         progress_table.add_row(
@@ -90,13 +117,21 @@ class MiniMegaTortora():
                 title="[b]Rocketbody", border_style="yellow", padding=(1,1)),
         Panel.fit(f"[bold cyan]ObjectNumber: [white]{len(self.satelliteData['DEBRIS'])}\n"
                 f"[bold cyan]Track number: [white]{self.trackNumbers['DEBRIS']}\n",
-                title="[b]Debris",border_style="cyan", padding=(1, 1)))
+                title="[b]Debris",border_style="cyan", padding=(1, 1))),
+        
+        # Panel.fit(f"[bold magenta]ObjectNumber: [white]{len(self.satelliteData['NONROTARY'])}\n"
+        #         f"[bold magenta]Track number: [white]{self.trackNumbers['NONROTARY']}\n",
+        #         title="[b]NONROTARY",border_style="magenta", padding=(1, 1)))
         return progress_table
       
     def db_info(self):
         for cls in self.mainClasses:
             folder=os.path.join(self.DATASET_FOLDER,cls)
-            for file in sorted(os.listdir(folder)):
+            folders=os.listdir(folder)
+            sorted(folders)
+            # np.random.shuffle(folders)
+            # sorted(folders)
+            for file in folders:
                 self.satellites[cls].append(file)
     
     def get_track_numbers(self):
@@ -141,7 +176,7 @@ class MiniMegaTortora():
         mid=self.mainClasses.index(cls)
         satNum=self.satelliteNumber
         folder=os.path.join(self.DATASET_FOLDER,cls)
-        for idx in range(min(len(self.satellites[cls]),satNum)):
+        for idx in range(min(len(self.satellites[cls]),satNum[mid])):
             name=self.satellites[cls][idx]
             class_name=name.split('_')[-1].split('.')[0]
             with open(os.path.join(folder,name)) as f:
@@ -176,9 +211,8 @@ class MiniMegaTortora():
         plt.xlabel("Sample #")
         plt.ylabel("Magnitude")
         plt.xticks(rotation=45)
-        plt.xlim(0,500)
         plt.tight_layout()    
-        plt.gcf().set_size_inches(16, 9)
+        plt.gcf().set_size_inches(5, 5)
         # plt.savefig(f'rapor_plots/spectogram_plots/{satellite_name}-{class_name}-{Fs}-{track_numbers[idx]}.png',bbox_inches='tight', dpi=200)   # save the figure to file
         plt.show()
         plt.close()
@@ -197,15 +231,14 @@ class MiniMegaTortora():
         if plotAll:nTracks=len(data)
         
         for i in range(min(nTracks,len(data))):
-            plt.plot(data[i],marker='o',linewidth=1.0,markersize=2,label=i)
+            plt.plot(data[i],marker='o',linewidth=1.0,markersize=1,label=i)
 
         plt.title(f"{name}-{label}")
         plt.xlabel("Sample #")
-        plt.ylabel("Magnitude")
+        plt.ylabel("Apperent Magnitude")
         plt.xticks(rotation=45)
-        plt.xlim(0,500)
         plt.tight_layout()    
-        plt.gcf().set_size_inches(16, 9)
+        plt.gcf().set_size_inches(8, 3)
     
         # plt.savefig(f'rapor_plots/spectogram_plots/{satellite_name}-{class_name}-{Fs}-{track_numbers[idx]}.png',bbox_inches='tight', dpi=200)   # save the figure to file
         plt.legend()    
@@ -286,36 +319,7 @@ class MiniMegaTortora():
         plt.gcf().set_size_inches(16, 9)    
         
         plt.show()
-
-    def spectogram_analysis_1(self,cls):
-        sat=self.sample
-        name=sat["name"]
-        label=sat["class"]
-        data=np.array(sat["data"][0])
         
-        data.reshape(-1)
-        sR=10
-        stft=librosa.stft(data,n_fft=256)
-        spectrogram=np.abs(stft)
-        
-        plt.figure(figsize=(12, 6))
-        librosa.display.specshow(librosa.amplitude_to_db(spectrogram, ref=np.max), sr=sR, x_axis='time', y_axis='log')
-        plt.colorbar(format='%+2.0f dB')
-        plt.title('Spectrogram')
-        plt.tight_layout()
-        plt.show()
-        
-    
-    def light_kurwa(self):
-        sat=self.sample
-        name=sat["name"]
-        label=sat["class"]
-        data=np.array(sat["data"][0])
-        
-        lc=lk.LightCurve(time=range(len(data)),flux=data).to_periodogram('ls').plot()
-
-        # lc=lc.flatten(window_length=401)
-        plt.show()
     
     def periodogram_analysis(self):
         sat=self.sample
@@ -340,37 +344,63 @@ class MiniMegaTortora():
         plt.show()
     
     
-    def discreteWaveletTransform(self,cls,satName):
-        sat=self.getSatellitebyName(cls,satName)
+    def discreteWaveletTransform(self,cls):
+        sat=self.satelliteData[cls][0]
+        name=sat["name"]
+        label=sat["class"]
+        data=np.array(sat["data"][1])
+        w=pywt.Wavelet('haar')
+        cA,cD= pywt.dwt(data,w,'constant')
+        fig, axs = plt.subplots(2)
+        axs[0].plot(data,marker='o',linewidth=1.2,markersize=3)
+        axs[0].set_title(f'Original Light Curve')
+        axs[1].plot(cA,marker='o',linewidth=1.2,markersize=3)
+        axs[1].set_title('Discrete Wavelet Transformed')
+        plt.xticks(rotation=45)
+        fig.suptitle(f"{name}-{label}")
+        plt.gcf().set_size_inches(16, 9)    
+        plt.tight_layout()    
+
+        plt.show()
+        
+    def basicDWT(self,track):
+        w=pywt.Wavelet('haar')
+        cA,cD= pywt.dwt(track,w,'constant')
+        return cA
+    
+    def interpolation(self,cls):
+        sat=self.satelliteData[cls][0]
         name=sat["name"]
         label=sat["class"]
         data=np.array(sat["data"][0])
-        w=pywt.Wavelet('dmey')
-        cA,cD= pywt.dwt(data,w,'constant')
-        fig, axs = plt.subplots(3)
-        axs[0].plot(data,marker='o',linewidth=1.2,markersize=3)
-        axs[0].set_title(f'Original-{name}-{label}')
-        axs[1].plot(cA,marker='o',linewidth=1.2,markersize=3)
-        axs[1].set_title('cA')
-        axs[2].plot(cD,marker='o',linewidth=1.2,markersize=3)
-        axs[2].set_title('cD')
-        plt.xticks(rotation=45)
-
-        plt.gcf().set_size_inches(16, 9)    
-        
-        plt.show()
-        
+        plt.plot(data)
+        if len(data)<1000:
+            data=interp1d(np.arange(1000),data,'linear')
+            plt.plot(data)
     
+    def get_average_track_length(self):
+        counter=0
+        track_length=[0,0,0]
+        track_number=[0,0,0]
+        for idx,cls in enumerate(self.mainClasses):
+            for sat in self.satelliteData[cls]:
+                for track in sat['data']:
+                    track_length[idx]+=len(track)
+                    track_number[idx]+=1
+        print(track_length)
+        print(track_number)
+        print([track_length[idx]/track_number[idx] for idx in range(0,3)])
+            
 if __name__ == "__main__":
   
     
-    mmt=MiniMegaTortora(satNumber=10,periodic=True)
-    print(mmt)
+    mmt=MiniMegaTortora(periodic=True,satNumber=[45,160,280])
+    # mmt.discreteWaveletTransform("SATELLITE")
+    mmt.get_average_track_length()
     # mmt.getSatellitebyName('SATELLITE'," 37165 YAOGAN 11 ")
-    # mmt.plot_single_track("SATELLITE",trackIdx=4)
+    # mmt.plot_single_track("SATELLITE",trackIdx=0)
     # mmt.plot_class_comparison(nTracks=2,nSats=1),
     # mmt.class_comparison_subplot()
-    # mmt.plot_tracks("SATELLITE",1,5)
-    
+
     # mmt.class_comparison_subplot_name(trackId=3)
     
