@@ -18,30 +18,37 @@ class SSAModel(nn.Module):
         self.Conv1=nn.Sequential(
             nn.Conv1d(in_channels=1,out_channels=64,kernel_size=3,stride=1,padding=1),
             nn.ReLU(),
+            nn.Dropout(0.3),
+
             nn.Conv1d(in_channels=64,out_channels=64,kernel_size=3,stride=2,padding=1),
             nn.ReLU(),
+            nn.Dropout(0.3),
+
         )
         self.lstm1=nn.Sequential(
             nn.LSTM(input_size=64,hidden_size=64,batch_first=True,bidirectional=False))
         
         self.Conv2=nn.Sequential(
-            nn.Conv1d(in_channels=350,out_channels=128,kernel_size=5,stride=1,padding=1),
+            nn.Conv1d(in_channels=64,out_channels=128,kernel_size=5,stride=1,padding=1),
             nn.ReLU(),
+            nn.Dropout(0.3),
+
             nn.Conv1d(in_channels=128,out_channels=128,kernel_size=5,stride=2,padding=1),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Dropout(0.3),
         )
         self.lstm2=nn.Sequential(
             nn.LSTM(input_size=128,hidden_size=128,batch_first=True,bidirectional=False))
 
-        # self.Conv3=nn.Sequential(
-        #     nn.Conv1d(in_channels=256,out_channels=512,kernel_size=7,stride=1),
-        #     nn.BatchNorm1d(512),
-        #     nn.Conv1d(in_channels=512,out_channels=512,kernel_size=7,stride=1),
-        #     nn.BatchNorm1d(512),
-        #     nn.Conv1d(in_channels=512,out_channels=512,kernel_size=7,stride=2),
-        #     nn.BatchNorm1d(512),
-        #     nn.ReLU()
-        # )
+        self.Conv3=nn.Sequential(
+            nn.Conv1d(in_channels=128,out_channels=512,kernel_size=7,stride=1),
+            nn.BatchNorm1d(512),
+            nn.Conv1d(in_channels=512,out_channels=512,kernel_size=7,stride=1),
+            nn.BatchNorm1d(512),
+            nn.Conv1d(in_channels=512,out_channels=512,kernel_size=7,stride=2),
+            nn.BatchNorm1d(512),
+            nn.ReLU()
+        )
         # self.lstm3=nn.Sequential(
         #     nn.LSTM(input_size=23,hidden_size=256,num_layers=1))
 
@@ -57,13 +64,16 @@ class SSAModel(nn.Module):
         self.avgPool1=nn.AdaptiveAvgPool1d(1)
 
         self.FullyConnected=nn.Sequential(
-            nn.Linear(in_features=3840,out_features=128),
+            nn.Linear(in_features=22144,out_features=128),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.3),
             nn.Linear(in_features=128,out_features=256),
             nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(in_features=256,out_features=3),
+            nn.Dropout(0.3),
+            nn.Linear(in_features=256,out_features=512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(in_features=512,out_features=3),
         )
         
         self.history={"train_loss":[],"train_acc":[],"val_loss":[],"val_acc":[]}
@@ -71,17 +81,17 @@ class SSAModel(nn.Module):
     def forward(self,x):
 
         x=self.Conv1(x)
-        x,_=self.lstm1(x.permute(0, 2, 1))
-        x=F.tanh(x)
+        # x,_=self.lstm1(x.permute(0, 2, 1))
+        # x=F.tanh(x)
         x=self.Conv2(x)
-        x,_=self.lstm2(x.permute(0, 2, 1))
+        # x,_=self.lstm2(x.permute(0, 2, 1))
         # x=self.Conv3(x)
         # x,_=self.lstm3(x)
-        x=F.tanh(x)
+        # x=F.tanh(x)
         # x=self.Conv4(x)
         x=torch.flatten(x,1)
 
-        # x = x.view(-1, x.size(1) * x.size(2))
+        # x = x.view(-1, x.size(1) * x.size(2))x
         # print(f"Shape:{x.shape}")
         x=self.FullyConnected(x)
 

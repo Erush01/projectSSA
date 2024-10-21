@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 import concurrent
 from ssaUtils import RSO,LightCurveReadProgressBar,LightCurve
+from rich import print as print_rich
 
 class MiniMegaTortoraDataset():
     
@@ -130,8 +131,28 @@ class MiniMegaTortoraDataset():
 
         plt.show()
         
-    
+    def load_data(self):
+        print_rich(self.get_data_rich())
+        classes=[[x] for x in self.satelliteData]#Main classes
+        dataset=list()
 
+        #Add all satellites from each class to bigger set
+
+        for i in classes:
+            for j in self.satelliteData[i[0]]:
+                dataset.append(j)
+
+
+        x=list()
+        y=list()
+        #Parse dataset into tracks and classes
+        for rso in dataset:
+            for lightcurve in rso.lightCurves:
+
+                y.append([rso.type])     
+                x.append(lightcurve.track)
+
+        return x,y
 if __name__ == "__main__":
     mmt=MiniMegaTortoraDataset(periodic=True,satNumber=[1,1,1])
     # print(len(mmt.satellites["ROCKETBODY"]))

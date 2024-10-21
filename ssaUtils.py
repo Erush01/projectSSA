@@ -48,8 +48,7 @@ def DiscreteWaveletTransform(trackSeries):
         
         trackSeries[idx]=(cA)
     # return tempSeries  
-    
-    
+
  
 
 # class DelayedExponentialDecay(tf.keras.callbacks.Callback):

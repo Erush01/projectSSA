@@ -30,52 +30,23 @@ args=parser.parse_args()
 if(args.debug): 
     satelliteNumber=[1,1,5]
 else:
-    satelliteNumber=[20,80,300]
+    satelliteNumber=[40,80,300]
+
 trackSize = 700      # Maximum sample points for each track
 EPOCHS = 100    # Number of epochs for training
 batchSize = 32        # batch size for training
-buffer = BytesIO()
-buffer2=BytesIO()
-acc_buffer=BytesIO()
-loss_buffer=BytesIO()
+
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 
 #--------------------Learning Rate Scheduler-------------------------------
 
-# learning_rate=1e-4
-# final_learning_rate = 5e-6
-# start_epoch=60
-# learning_rate_decay_factor = (final_learning_rate /learning_rate)**(1/(epochs-start_epoch))
-
-
-
 mmt=MiniMegaTortoraDataset(satNumber=satelliteNumber,periodic=True)
+classes=[[x] for x in mmt.satelliteData]
 
-print_rich(mmt.get_data_rich())
-classes=[[x] for x in mmt.satelliteData]#Main classes
-dataset=list()
+x,y=mmt.load_data()
 
-#Add all satellites from each class to bigger set
-
-for i in classes:
-    for j in mmt.satelliteData[i[0]]:
-        dataset.append(j)
-
-
-x=list()
-y=list()
-#Parse dataset into tracks and classes
-for rso in dataset:
-    for lightcurve in rso.lightCurves:
-
-        y.append([rso.type])     
-        x.append(lightcurve.track)
-
-
-#Apply Discrete wavelet transform to dataset
 DiscreteWaveletTransform(x)
-#Pad tracks to maximum TrackSize
 
 x=[a[0:trackSize] for a in x]
 x=[np.pad(a,(0,trackSize-len(a)),mode='symmetric') for a in x]
@@ -83,7 +54,6 @@ x=[np.pad(a,(0,trackSize-len(a)),mode='symmetric') for a in x]
 #Numpy array conversion        
 x=np.array(x,dtype='object')
 y=np.array(y)
-
 
 cat=preprocessing.OneHotEncoder().fit(classes)
 y=cat.transform(y).toarray()
@@ -115,7 +85,6 @@ x_train=np.expand_dims(x_train,axis=-1)
 x_val=np.expand_dims(x_val,axis=-1)
 x_test=np.expand_dims(x_test,axis=-1)
 
-# print_rich(train_table(x_train,y_train,x_val,y_val,x_test,y_test))
 
 tensor_train_x=torch.Tensor(x_train)
 tensor_train_y=torch.Tensor(y_train)
@@ -144,7 +113,7 @@ loss_fn=nn.CrossEntropyLoss()
 optimizer=torch.optim.Adam(model.parameters(),lr=0.001)
 model.compile(optimizer,loss_fn,device,writer)
 model.to(device)
-summary(model.cuda(),input_size=(batchSize,tensor_train_x.shape[1],tensor_train_x.shape[2]))
+# summary(model.cuda(),input_size=(batchSize,tensor_train_x.shape[1],tensor_train_x.shape[2]))
 
 model.trainModel(train_dataloader,val_dataloader,EPOCHS)
 history=model.history
