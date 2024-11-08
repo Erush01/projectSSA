@@ -2,3 +2,5 @@ ssaDataset/
 plots/
 stvid_files/
 checkpoints/
+runs/
+logs/

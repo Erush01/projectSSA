@@ -1,6 +1,8 @@
 
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' #Silence tensorflow
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+os.environ['TF_CUDNN_RESET_RND_GEN_STATE']='1'
 import tensorflow as tf
 import numpy as np
 from sklearn import preprocessing
@@ -9,13 +11,10 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import datetime
 from sklearn.metrics import confusion_matrix,ConfusionMatrixDisplay,classification_report
-from mmt import MiniMegaTortora
+from mmt import MiniMegaTortoraDataset
 import seaborn as sns
 import pandas as pd
 from rich import print as print_rich
-from rich.panel import Panel
-from rich.table import Table
-from keras.utils import plot_model
 from io import BytesIO
 from ssaUtils import get_summary_str,train_table,DiscreteWaveletTransform,DelayedExponentialDecay,save_evaluated_lc_plots
 
@@ -24,11 +23,11 @@ physical_devices = tf.test.gpu_device_name()
 assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
 
 #-------------Configurations---------------------------
-satelliteNumber = [45,160,280] # Maximum number of satellites for each class in dataset[Satellite,Rocketbody,Debris]
-# satelliteNumber=[1,1,1]
+# satelliteNumber = [45,160,280] # Maximum number of satellites for each class in dataset[Satellite,Rocketbody,Debris]
+satelliteNumber=[1,1,1]
 trackSize = 700      # Maximum sample points for each track
 epochs = 100     # Number of epochs for training
-batchSize = 32        # batch size for training
+batchSize = 1        # batch size for training
 buffer = BytesIO()
 buffer2=BytesIO()
 acc_buffer=BytesIO()
@@ -44,7 +43,7 @@ learning_rate_decay_factor = (final_learning_rate /learning_rate)**(1/(epochs-st
 
 #-------------------------------------------------------
 
-mmt=MiniMegaTortora(satNumber=satelliteNumber,periodic=True)
+mmt=MiniMegaTortoraDataset(satNumber=satelliteNumber,periodic=True)
 
 print_rich(mmt.get_data_rich())
 
@@ -58,17 +57,17 @@ for i in classes:
     for j in mmt.satelliteData[i[0]]:
         dataset.append(j)
 
+
 #Shuffle dataset
 # np.random.shuffle(dataset)
 
 x=list()
 y=list()
-
 #Parse dataset into tracks and classes
 for i in dataset:
-    for data in i['data']:
-        y.append([i['class']])     
-        x.append(data)
+    for data in i.lightCurves:
+        y.append([i.type])     
+        x.append(data.track)
 
 #Apply Discrete wavelet transform to dataset
 DiscreteWaveletTransform(x)
@@ -124,73 +123,94 @@ print_rich(train_table(x_train,y_train,x_val,y_val,x_test,y_test))
 
 
 #%97 training accuracy
-model=tf.keras.models.Sequential([
+# model=tf.keras.models.Sequential([
     
+#     tf.keras.layers.InputLayer(input_shape=(x_train.shape[1],x_train.shape[2])),
+    
+#     tf.keras.layers.Conv1D(64,kernel_size=3,strides=1,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+
+#     tf.keras.layers.Conv1D(64,kernel_size=3,strides=2,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+    
+#     tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64,return_sequences=True)),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+
+#     tf.keras.layers.Conv1D(128,kernel_size=5,strides=1,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+    
+#     tf.keras.layers.Conv1D(128,kernel_size=5,strides=1,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+                
+#     tf.keras.layers.Conv1D(128,kernel_size=5,strides=2,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+        
+#     tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(128,return_sequences=True)),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+
+#     tf.keras.layers.Conv1D(256,kernel_size=5,strides=1,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+    
+#     tf.keras.layers.Conv1D(256,kernel_size=5,strides=1,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+    
+#     tf.keras.layers.Conv1D(256,kernel_size=5,strides=2,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+    
+#     tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(256,return_sequences=True)),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+    
+#     tf.keras.layers.Conv1D(512,kernel_size=5,strides=1,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+    
+#     tf.keras.layers.Conv1D(512,kernel_size=5,strides=1,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+    
+#     tf.keras.layers.Conv1D(512,kernel_size=5,strides=2,activation='relu',padding='same'),
+#     tf.keras.layers.BatchNormalization(),
+#     tf.keras.layers.Dropout(0.3),
+    
+    
+#     tf.keras.layers.GlobalAveragePooling1D(),
+#     tf.keras.layers.Dense(256,activation='relu',kernel_regularizer=tf.keras.regularizers.L2(0.01)),
+#     tf.keras.layers.Dropout(0.5),
+#     tf.keras.layers.Dense(512,activation='relu',kernel_regularizer=tf.keras.regularizers.L2(0.01)),
+#     tf.keras.layers.Dropout(0.5),
+#     tf.keras.layers.Dense(1024,activation='relu',kernel_regularizer=tf.keras.regularizers.L2(0.01)),
+#     tf.keras.layers.Dropout(0.5),
+#     tf.keras.layers.Dense(3,activation='softmax')])
+
+model=tf.keras.models.Sequential([
+
     tf.keras.layers.InputLayer(input_shape=(x_train.shape[1],x_train.shape[2])),
     
     tf.keras.layers.Conv1D(64,kernel_size=3,strides=1,activation='relu',padding='same'),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-
     tf.keras.layers.Conv1D(64,kernel_size=3,strides=2,activation='relu',padding='same'),
+    tf.keras.layers.LSTM(64,return_sequences=True),
     tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-    
-    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64,return_sequences=True)),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-
-    tf.keras.layers.Conv1D(128,kernel_size=5,strides=1,activation='relu',padding='same'),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
     
     tf.keras.layers.Conv1D(128,kernel_size=5,strides=1,activation='relu',padding='same'),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-                
     tf.keras.layers.Conv1D(128,kernel_size=5,strides=2,activation='relu',padding='same'),
+    tf.keras.layers.LSTM(128,return_sequences=True),
     tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-        
-    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(128,return_sequences=True)),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
 
-    tf.keras.layers.Conv1D(256,kernel_size=5,strides=1,activation='relu',padding='same'),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-    
-    tf.keras.layers.Conv1D(256,kernel_size=5,strides=1,activation='relu',padding='same'),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-    
-    tf.keras.layers.Conv1D(256,kernel_size=5,strides=2,activation='relu',padding='same'),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-    
-    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(256,return_sequences=True)),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-    
-    tf.keras.layers.Conv1D(512,kernel_size=5,strides=1,activation='relu',padding='same'),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-    
-    tf.keras.layers.Conv1D(512,kernel_size=5,strides=1,activation='relu',padding='same'),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-    
-    tf.keras.layers.Conv1D(512,kernel_size=5,strides=2,activation='relu',padding='same'),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Dropout(0.3),
-    
-    
     tf.keras.layers.GlobalAveragePooling1D(),
+    tf.keras.layers.Dense(128,activation='relu',kernel_regularizer=tf.keras.regularizers.L2(0.01)),
+    tf.keras.layers.Dropout(0.5),
     tf.keras.layers.Dense(256,activation='relu',kernel_regularizer=tf.keras.regularizers.L2(0.01)),
-    tf.keras.layers.Dropout(0.5),
-    tf.keras.layers.Dense(512,activation='relu',kernel_regularizer=tf.keras.regularizers.L2(0.01)),
-    tf.keras.layers.Dropout(0.5),
-    tf.keras.layers.Dense(1024,activation='relu',kernel_regularizer=tf.keras.regularizers.L2(0.01)),
     tf.keras.layers.Dropout(0.5),
     tf.keras.layers.Dense(3,activation='softmax')])
 
