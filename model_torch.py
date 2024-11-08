@@ -14,7 +14,7 @@ import seaborn as sns
 import pandas as pd
 from rich import print as print_rich
 from io import BytesIO
-from ssaUtils import get_summary_str,train_table,DiscreteWaveletTransform,save_evaluated_lc_plots
+from ssaUtils import get_summary_str,train_table,DiscreteWaveletTransform,save_evaluated_lc_plots,pad_to_size_interpolate
 from torch.utils.data import TensorDataset,DataLoader
 import argparse
 from torchinfo import summary
@@ -46,10 +46,10 @@ classes=[[x] for x in mmt.satelliteData]
 
 x,y=mmt.load_data()
 
-DiscreteWaveletTransform(x)
+#DiscreteWaveletTransform(x)
 
-x=[a[0:trackSize] for a in x]
-x=[np.pad(a,(0,trackSize-len(a)),mode='symmetric') for a in x]
+x=[pad_to_size_interpolate(array,trackSize) for array in x]
+
 
 #Numpy array conversion        
 x=np.array(x,dtype='object')

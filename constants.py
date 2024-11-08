@@ -1,4 +1,5 @@
-DATASET_FOLDER="/home/erush/projectSSA/ssaDataset"
+DATASET_FOLDER="/home/parslab2/projectSSA/ssaDataset"
 PERIODIC_FOLDER="/media/erush/data/SSADataset/periodic"
 NONPERIODIC_FOLDER="/home/erush/projectSSA/ssaDataset/Non-variable"
-PERIODIC_FOLDER_FAST="/home/erush/projectSSA/ssaDataset/Periodic"
+PERIODIC_FOLDER_FAST="/home/parslab2/projectSSA/ssaDataset/Periodic"
+PICKLE_FOLDER="/home/parslab2/projectSSA/pickleDataset"

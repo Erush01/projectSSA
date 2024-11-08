@@ -12,9 +12,12 @@ from rich.progress import Progress
 import rich
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn,MofNCompleteColumn,TimeElapsedColumn,TaskProgressColumn
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn,MofNCompleteColumn,TimeElapsedColumn,TaskProgressColumn,ProgressColumn
 from rich.table import Table
 from rich.console import Console
+from rich.text import Text
+from scipy import interpolate
+from scipy import stats
 
 def get_summary_str(model):
     lines = []
@@ -39,17 +42,257 @@ def train_table(x_train,y_train,x_val,y_val,x_test,y_test):
     return train_table
 
 
-def DiscreteWaveletTransform(trackSeries):
+def DiscreteWaveletTransform1(trackSeries):
 
     # tempSeries=list()
-    for idx,track in enumerate(trackSeries):
-        w=pywt.Wavelet('haar')
+    transformedSeries = []
+    for track in trackSeries:
+        w=pywt.Wavelet('db4')
         cA,cD= pywt.dwt(track,w,'constant')
-        
-        trackSeries[idx]=(cA)
-    # return tempSeries  
+        combined = np.concatenate([cA, cD])  # Flattened vector
+        transformedSeries.append(combined)
+    return transformedSeries  
 
- 
+def DiscreteWaveletTransform(trackSeries, wavelet='db4', level=3):
+    """
+    Apply multi-level discrete wavelet transform to time series data
+    
+    Parameters:
+    -----------
+    trackSeries : list or numpy array
+        List of time series tracks
+    wavelet : str, optional (default='db4')
+        Wavelet to use ('haar', 'db4', 'sym4' etc.)
+    level : int, optional (default=3)
+        Number of decomposition levels
+        
+    Returns:
+    --------
+    transformed_series : numpy array
+        Transformed time series with both approximation and detail coefficients
+    """
+    transformed_series = []
+    
+    for idx, track in enumerate(trackSeries):
+        # Ensure minimum length for decomposition
+        if len(track) < 2**level:
+            pad_length = 2**level - len(track)
+            track = np.pad(track, (0, pad_length), mode='symmetric')
+            
+        # Perform multi-level wavelet decomposition
+        coeffs = pywt.wavedec(track, wavelet, level=level)
+        
+        # Concatenate all coefficients (both approximation and details)
+        features = np.concatenate(coeffs)
+        
+        # Update the track with concatenated coefficients
+        trackSeries[idx] = features
+        
+    return trackSeries
+
+class WaveletFeatureExtractor:
+    def __init__(self, combination_method='weighted', wavelet='db4', level=3):
+        """
+        Initialize wavelet feature extractor
+        
+        Parameters:
+        -----------
+        combination_method : str
+            Method to combine coefficients:
+            - 'weighted': weighted sum based on level importance
+            - 'statistical': statistical features from each level
+            - 'energy': energy-based combination
+            - 'stack': stacks coefficients as channels
+            - 'pyramid': pyramid-like combination
+        wavelet : str
+            Wavelet to use ('db4', 'haar', 'sym4', etc.)
+        level : int
+            Decomposition level
+        """
+        self.combination_method = combination_method
+        self.wavelet = wavelet
+        self.level = level
+    
+    def weighted_combine(self, coeffs):
+        """Combine coefficients using level-based weights with proper shape handling"""
+        # Higher weights for lower frequency components
+        weights = [2**i for i in range(len(coeffs))]
+        weights = np.array(weights) / sum(weights)
+        
+        # Get the length of approximation coefficients (first element)
+        target_length = len(coeffs[0])
+        
+        # Initialize the combined array
+        combined = np.zeros(target_length)
+        
+        # Process each coefficient level
+        for i, (coef, weight) in enumerate(zip(coeffs, weights)):
+            # Resize coefficient to match target length
+            if len(coef) != target_length:
+                # Use interpolation for resizing
+                indices = np.linspace(0, len(coef)-1, target_length)
+                coef_resized = np.interp(indices, np.arange(len(coef)), coef)
+            else:
+                coef_resized = coef
+                
+            # Add weighted contribution
+            combined += weight * coef_resized
+            
+        return combined
+    def statistical_combine(self, coeffs):
+        """Extract statistical features from each coefficient level"""
+        features = []
+        
+        for coef in coeffs:
+            level_features = [
+                np.mean(coef),      # Mean
+                np.std(coef),       # Standard deviation
+                stats.skew(coef),   # Skewness
+                stats.kurtosis(coef), # Kurtosis
+                np.max(coef),       # Maximum
+                np.min(coef),       # Minimum
+                np.median(coef),    # Median
+                stats.iqr(coef)     # Interquartile range
+            ]
+            features.extend(level_features)
+            
+        return np.array(features)
+    
+    def energy_combine(self, coeffs):
+        """Combine coefficients based on their energy content"""
+        energies = [np.sum(coef**2) for coef in coeffs]
+        total_energy = sum(energies)
+        weights = [e/total_energy for e in energies]
+        
+        # Normalize and combine
+        normalized_coeffs = []
+        max_length = len(coeffs[0])
+        
+        for coef, weight in zip(coeffs, weights):
+            if len(coef) < max_length:
+                # Upsample to match length
+                scale_factor = max_length // len(coef)
+                normalized = np.repeat(coef, scale_factor) * weight
+                if len(normalized) < max_length:
+                    normalized = np.pad(normalized, (0, max_length - len(normalized)), 'edge')
+            else:
+                normalized = coef * weight
+            normalized_coeffs.append(normalized)
+            
+        return np.sum(normalized_coeffs, axis=0)
+    
+    def stack_combine(self, coeffs):
+        """Stack coefficients as separate channels"""
+        max_length = len(coeffs[0])
+        stacked_coeffs = []
+        
+        for coef in coeffs:
+            if len(coef) < max_length:
+                # Upsample to match length
+                scale_factor = max_length // len(coef)
+                resized = np.repeat(coef, scale_factor)
+                if len(resized) < max_length:
+                    resized = np.pad(resized, (0, max_length - len(resized)), 'edge')
+            else:
+                resized = coef
+            stacked_coeffs.append(resized)
+            
+        return np.stack(stacked_coeffs, axis=-1)
+    
+    def pyramid_combine(self, coeffs):
+        """Combine coefficients in a pyramid-like structure"""
+        max_length = len(coeffs[0])
+        pyramid_coeffs = []
+        
+        for i, coef in enumerate(coeffs):
+            # Calculate the target length for this level
+            target_length = max_length // (2**i) if i > 0 else max_length
+            
+            if len(coef) < target_length:
+                # Upsample to target length
+                scale_factor = target_length // len(coef)
+                resized = np.repeat(coef, scale_factor)
+                if len(resized) < target_length:
+                    resized = np.pad(resized, (0, target_length - len(resized)), 'edge')
+            elif len(coef) > target_length:
+                # Downsample to target length
+                resized = coef[::len(coef)//target_length][:target_length]
+            else:
+                resized = coef
+                
+            pyramid_coeffs.append(resized)
+            
+        return np.concatenate(pyramid_coeffs)
+    
+    def transform(self, trackSeries):
+        """
+        Transform time series using selected combination method
+        """
+        transformed_series = []
+        
+        for track in trackSeries:
+            # Ensure minimum length for decomposition
+            if len(track) < 2**self.level:
+                pad_length = 2**self.level - len(track)
+                track = np.pad(track, (0, pad_length), mode='symmetric')
+            
+            # Perform wavelet decomposition
+            coeffs = pywt.wavedec(track, self.wavelet, level=self.level)
+            
+            # Apply selected combination method
+            if self.combination_method == 'weighted':
+                combined = self.weighted_combine(coeffs)
+            elif self.combination_method == 'statistical':
+                combined = self.statistical_combine(coeffs)
+            elif self.combination_method == 'energy':
+                combined = self.energy_combine(coeffs)
+            elif self.combination_method == 'stack':
+                combined = self.stack_combine(coeffs)
+            elif self.combination_method == 'pyramid':
+                combined = self.pyramid_combine(coeffs)
+            else:
+                raise ValueError(f"Unknown combination method: {self.combination_method}")
+                
+            transformed_series.append(combined)
+            
+        return np.array(transformed_series)
+
+
+def pad_to_size_interpolate(array, target_size):
+    """
+    Pad or sample a 1D array to a target size using cubic interpolation.
+
+    Parameters:
+    -----------
+    array : numpy.ndarray
+        1D input array
+    target_size : int
+        Desired length of the output array
+        
+    Returns:
+    --------
+    numpy.ndarray
+        Array padded or sampled to target_size using interpolation
+    """
+    array = np.asarray(array)
+    if array.ndim != 1:
+        raise ValueError("Input array must be 1-dimensional")
+
+    current_size = len(array)
+
+    # If array is already the target size, return it
+    if current_size == target_size:
+        return array.copy()
+
+    # Create new x coordinates for interpolation
+    old_x = np.linspace(0, 1, current_size)
+    new_x = np.linspace(0, 1, target_size)
+
+    # Use cubic interpolation for smooth results
+    f = interpolate.interp1d(old_x, array, kind='cubic', fill_value='extrapolate')
+
+    # Sample the interpolated function at the new x coordinates
+    return f(new_x)
 
 # class DelayedExponentialDecay(tf.keras.callbacks.Callback):
 #     def __init__(self, initial_learning_rate, decay_steps, decay_rate, start_epoch,log_dir, **kwargs):
@@ -182,6 +425,52 @@ class RSO:
         self.type=type
         self.lightCurves=lcArray
 
+    def __repr__(self):
+        return (f"Name:{self.name}\n"
+                f"type ID:{self.type}\n"
+                f"Track number :{len(self.lightCurves)}")
+
+class MetricsColumn(ProgressColumn):
+    def __init__(self, getter_func):
+        super().__init__()
+        self.getter_func = getter_func
+
+    def render(self, task):
+        # Call the getter function to retrieve the metric value
+        value = self.getter_func(task.fields)
+        
+        # Assign colors based on metric type
+        if 'Loss' in value:
+            return Text(value, style="red")  # Loss in red
+        elif 'Acc' in value:
+            accuracy = float(value.split(": ")[1].strip('%'))  # Extract accuracy value
+            if accuracy >= 90:
+                color="bold green"
+            elif accuracy >=70:
+                color="bold blue"
+            else:
+                color="bold yellow"
+            # color = "bold blue" if accuracy >= 70 else "bold yellow"  # High accuracy is green, lower is yellow
+            return Text(value, style=color)
+        else:
+            return Text(value)
+    
+def trainingProgressBar(epoch,batch):
+    console=Console()
+    progressBar = Progress(
+    "[bold]Epoch: {task.fields[epoch]}",
+    "[green]Batch:",
+    MofNCompleteColumn(),
+    BarColumn(),
+    MetricsColumn(lambda fields: f"Loss: {fields['train_loss']:.4f}"),
+    MetricsColumn(lambda fields: f"Train Acc: {fields['train_acc']:.2f}%"),
+    MetricsColumn(lambda fields: f"Val Loss: {fields['val_loss']:.4f}"),
+    MetricsColumn(lambda fields: f"Val Acc: {fields['val_acc']:.2f}%"),
+        "| {task.percentage:>3.1f}% ",
+    TimeElapsedColumn(),console=console)
+    task=progressBar.add_task("Training",epoch=epoch,total=batch,train_loss=0,train_acc=0,val_loss=0,val_acc=0)
+    
+    return progressBar
 
 
 
