@@ -10,13 +10,13 @@ from scipy.stats import zscore
 from mpl_toolkits.mplot3d import Axes3D  # Import necessary for 3D plotting
 
 # Load dataset
-satelliteNumber = [60, 160, 300]
+satelliteNumber = [60, 160, 0]
 trackSize = 500
 mmt = MiniMegaTortoraDataset(satNumber=satelliteNumber, periodic=True)
 x, y = mmt.load_data_new()
 
 # Preprocess data
-x = DiscreteWaveletTransform(x, wavelet='db20')
+x = DiscreteWaveletTransform(x, wavelet='db5')
 x = [pad_to_size_interpolate(array, trackSize) for array in x]
 X = StandardScaler().fit_transform(x)
 

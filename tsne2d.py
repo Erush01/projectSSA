@@ -7,14 +7,14 @@ import matplotlib.pyplot as plt
 from mmt import MiniMegaTortoraDataset
 from ssaUtils import DiscreteWaveletTransform,pad_to_size_interpolate
 from sklearn import preprocessing
-satelliteNumber=[60,160,300]
+satelliteNumber=[60,160,0]
 trackSize=1000
 mmt=MiniMegaTortoraDataset(satNumber=satelliteNumber,periodic=True)
 x,y=mmt.load_data_new()
 
 
 
-x = DiscreteWaveletTransform(x,wavelet='sym5')
+x = DiscreteWaveletTransform(x,wavelet='db4')
 x=[pad_to_size_interpolate(array,trackSize) for array in x]
 
 
@@ -27,7 +27,7 @@ X_embedded = TSNE(n_components=2, perplexity=30,verbose=2).fit_transform(X)
 
 # Plot with color-coded labels
 plt.figure(figsize=(8, 6))
-scatter = plt.scatter(X_embedded[:, 0], X_embedded[:, 1], c=y_numeric, cmap='viridis', s=50,alpha=0.5)
+scatter = plt.scatter(X_embedded[:, 0], X_embedded[:, 1], c=y_numeric, cmap='viridis', s=50,alpha=0.2)
 plt.colorbar(scatter, label='Labels')
 plt.title('Time Series Data Visualization using t-SNE')
 plt.xlabel('t-SNE Dimension 1')

@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn import preprocessing
 from mpl_toolkits.mplot3d import Axes3D  # Import necessary for 3D plotting
 
-satelliteNumber=[60,160,300]
+satelliteNumber=[60,160,0]
 trackSize=500
 mmt=MiniMegaTortoraDataset(satNumber=satelliteNumber,periodic=True)
 x,y=mmt.load_data_new()
