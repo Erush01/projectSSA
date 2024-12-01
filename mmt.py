@@ -84,7 +84,7 @@ class MiniMegaTortoraDataset():
                                 if(satnumbers[idx]>0):
                                     rso=pickle.load(f)
                                     for lightcurve in rso.lightCurves:
-                                        y.append([rso.type])     
+                                        y.append(rso.type)     
                                         x.append(lightcurve.track)
                                     self.progressBar.job_progress.advance(task_id=idx)
                                     self.progressBar.overall_progress.update(self.progressBar.overall_task,advance=1)

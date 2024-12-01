@@ -18,6 +18,9 @@ from rich.console import Console
 from rich.text import Text
 from scipy import interpolate
 from scipy import stats
+import tensorflow as tf
+from typing import Union, List, Tuple, Dict
+import warnings
 
 def get_summary_str(model):
     lines = []
@@ -54,33 +57,15 @@ def DiscreteWaveletTransform1(trackSeries):
     return transformedSeries  
 
 def DiscreteWaveletTransform(trackSeries, wavelet='db4', level=3):
-    """
-    Apply multi-level discrete wavelet transform to time series data
-    
-    Parameters:
-    -----------
-    trackSeries : list or numpy array
-        List of time series tracks
-    wavelet : str, optional (default='db4')
-        Wavelet to use ('haar', 'db4', 'sym4' etc.)
-    level : int, optional (default=3)
-        Number of decomposition levels
-        
-    Returns:
-    --------
-    transformed_series : numpy array
-        Transformed time series with both approximation and detail coefficients
-    """
-    transformed_series = []
-    
+
     for idx, track in enumerate(trackSeries):
-        # Ensure minimum length for decomposition
-        if len(track) < 2**level:
-            pad_length = 2**level - len(track)
-            track = np.pad(track, (0, pad_length), mode='symmetric')
-            
+        # # Ensure minimum length for decomposition
+        # if len(track) < 2**level:
+        #     pad_length = 2**level - len(track)
+        #     track = np.pad(track, (0, pad_length), mode='symmetric')
+    
         # Perform multi-level wavelet decomposition
-        coeffs = pywt.wavedec(track, wavelet, level=level)
+        coeffs = pywt.wavedec(track, wavelet)
         
         # Concatenate all coefficients (both approximation and details)
         features = np.concatenate(coeffs)
@@ -90,172 +75,70 @@ def DiscreteWaveletTransform(trackSeries, wavelet='db4', level=3):
         
     return trackSeries
 
-class WaveletFeatureExtractor:
-    def __init__(self, combination_method='weighted', wavelet='db4', level=3):
-        """
-        Initialize wavelet feature extractor
-        
-        Parameters:
-        -----------
-        combination_method : str
-            Method to combine coefficients:
-            - 'weighted': weighted sum based on level importance
-            - 'statistical': statistical features from each level
-            - 'energy': energy-based combination
-            - 'stack': stacks coefficients as channels
-            - 'pyramid': pyramid-like combination
-        wavelet : str
-            Wavelet to use ('db4', 'haar', 'sym4', etc.)
-        level : int
-            Decomposition level
-        """
-        self.combination_method = combination_method
-        self.wavelet = wavelet
-        self.level = level
+
+def discrete_wavelet_transform(
+    track_series: Union[np.ndarray, List[np.ndarray]], 
+    wavelet: str = 'db4', 
+    level: int = None,
+    pad_mode: str = 'symmetric'
+) -> np.ndarray:
+    """
+    Apply multi-level discrete wavelet transform to time series data with robust handling
     
-    def weighted_combine(self, coeffs):
-        """Combine coefficients using level-based weights with proper shape handling"""
-        # Higher weights for lower frequency components
-        weights = [2**i for i in range(len(coeffs))]
-        weights = np.array(weights) / sum(weights)
-        
-        # Get the length of approximation coefficients (first element)
-        target_length = len(coeffs[0])
-        
-        # Initialize the combined array
-        combined = np.zeros(target_length)
-        
-        # Process each coefficient level
-        for i, (coef, weight) in enumerate(zip(coeffs, weights)):
-            # Resize coefficient to match target length
-            if len(coef) != target_length:
-                # Use interpolation for resizing
-                indices = np.linspace(0, len(coef)-1, target_length)
-                coef_resized = np.interp(indices, np.arange(len(coef)), coef)
-            else:
-                coef_resized = coef
-                
-            # Add weighted contribution
-            combined += weight * coef_resized
-            
-        return combined
-    def statistical_combine(self, coeffs):
-        """Extract statistical features from each coefficient level"""
-        features = []
-        
-        for coef in coeffs:
-            level_features = [
-                np.mean(coef),      # Mean
-                np.std(coef),       # Standard deviation
-                stats.skew(coef),   # Skewness
-                stats.kurtosis(coef), # Kurtosis
-                np.max(coef),       # Maximum
-                np.min(coef),       # Minimum
-                np.median(coef),    # Median
-                stats.iqr(coef)     # Interquartile range
-            ]
-            features.extend(level_features)
-            
-        return np.array(features)
+    Parameters:
+    -----------
+    track_series : numpy array or list of numpy arrays
+        Input time series tracks to transform
+    wavelet : str, optional (default='db4')
+        Wavelet basis to use
+    level : int, optional (default=None)
+        Number of decomposition levels
+    pad_mode : str, optional (default='symmetric')
+        Padding mode for handling edge effects
     
-    def energy_combine(self, coeffs):
-        """Combine coefficients based on their energy content"""
-        energies = [np.sum(coef**2) for coef in coeffs]
-        total_energy = sum(energies)
-        weights = [e/total_energy for e in energies]
-        
-        # Normalize and combine
-        normalized_coeffs = []
-        max_length = len(coeffs[0])
-        
-        for coef, weight in zip(coeffs, weights):
-            if len(coef) < max_length:
-                # Upsample to match length
-                scale_factor = max_length // len(coef)
-                normalized = np.repeat(coef, scale_factor) * weight
-                if len(normalized) < max_length:
-                    normalized = np.pad(normalized, (0, max_length - len(normalized)), 'edge')
-            else:
-                normalized = coef * weight
-            normalized_coeffs.append(normalized)
-            
-        return np.sum(normalized_coeffs, axis=0)
+    Returns:
+    --------
+    transformed_series : numpy array
+        Transformed time series with uniform shape
+    """
+    # Convert input to list if it's a numpy array
+    if isinstance(track_series, np.ndarray):
+        track_series = list(track_series)
     
-    def stack_combine(self, coeffs):
-        """Stack coefficients as separate channels"""
-        max_length = len(coeffs[0])
-        stacked_coeffs = []
-        
-        for coef in coeffs:
-            if len(coef) < max_length:
-                # Upsample to match length
-                scale_factor = max_length // len(coef)
-                resized = np.repeat(coef, scale_factor)
-                if len(resized) < max_length:
-                    resized = np.pad(resized, (0, max_length - len(resized)), 'edge')
-            else:
-                resized = coef
-            stacked_coeffs.append(resized)
-            
-        return np.stack(stacked_coeffs, axis=-1)
+    # Determine optimal decomposition level if not specified
+    if level is None:
+        level = int(np.floor(np.log2(min(len(track) for track in track_series))))
     
-    def pyramid_combine(self, coeffs):
-        """Combine coefficients in a pyramid-like structure"""
-        max_length = len(coeffs[0])
-        pyramid_coeffs = []
+    def transform_single_track(track):
+        # Ensure minimum length for decomposition
+        min_length = 2**level
+        if len(track) < min_length:
+            pad_length = min_length - len(track)
+            track = np.pad(track, (0, pad_length), mode=pad_mode)
         
-        for i, coef in enumerate(coeffs):
-            # Calculate the target length for this level
-            target_length = max_length // (2**i) if i > 0 else max_length
-            
-            if len(coef) < target_length:
-                # Upsample to target length
-                scale_factor = target_length // len(coef)
-                resized = np.repeat(coef, scale_factor)
-                if len(resized) < target_length:
-                    resized = np.pad(resized, (0, target_length - len(resized)), 'edge')
-            elif len(coef) > target_length:
-                # Downsample to target length
-                resized = coef[::len(coef)//target_length][:target_length]
-            else:
-                resized = coef
-                
-            pyramid_coeffs.append(resized)
-            
-        return np.concatenate(pyramid_coeffs)
+        # Perform multi-level wavelet decomposition
+        coeffs = pywt.wavedec(track, wavelet, level=level)
+        
+        # Flatten and concatenate coefficients
+        return np.concatenate(coeffs)
     
-    def transform(self, trackSeries):
-        """
-        Transform time series using selected combination method
-        """
-        transformed_series = []
-        
-        for track in trackSeries:
-            # Ensure minimum length for decomposition
-            if len(track) < 2**self.level:
-                pad_length = 2**self.level - len(track)
-                track = np.pad(track, (0, pad_length), mode='symmetric')
-            
-            # Perform wavelet decomposition
-            coeffs = pywt.wavedec(track, self.wavelet, level=self.level)
-            
-            # Apply selected combination method
-            if self.combination_method == 'weighted':
-                combined = self.weighted_combine(coeffs)
-            elif self.combination_method == 'statistical':
-                combined = self.statistical_combine(coeffs)
-            elif self.combination_method == 'energy':
-                combined = self.energy_combine(coeffs)
-            elif self.combination_method == 'stack':
-                combined = self.stack_combine(coeffs)
-            elif self.combination_method == 'pyramid':
-                combined = self.pyramid_combine(coeffs)
-            else:
-                raise ValueError(f"Unknown combination method: {self.combination_method}")
-                
-            transformed_series.append(combined)
-            
-        return np.array(transformed_series)
+    # Transform each track
+    transformed_tracks = [transform_single_track(track) for track in track_series]
+    
+    # Find the minimum length among transformed tracks
+    min_length = min(len(track) for track in transformed_tracks)
+    
+    # Truncate or pad tracks to ensure uniform shape
+    uniform_transformed_tracks = [
+        track[:min_length] if len(track) > min_length 
+        else np.pad(track, (0, min_length - len(track)), mode='constant')
+        for track in transformed_tracks
+    ]
+    
+    return np.array(uniform_transformed_tracks)
+
+
+
 
 
 def pad_to_size_interpolate(array, target_size):
@@ -294,36 +177,28 @@ def pad_to_size_interpolate(array, target_size):
     # Sample the interpolated function at the new x coordinates
     return f(new_x)
 
-# class DelayedExponentialDecay(tf.keras.callbacks.Callback):
-#     def __init__(self, initial_learning_rate, decay_steps, decay_rate, start_epoch,log_dir, **kwargs):
-#         super().__init__(**kwargs)
-#         self.initial_learning_rate = initial_learning_rate
-#         self.decay_steps = decay_steps
-#         self.decay_rate = decay_rate
-#         self.start_epoch = start_epoch
-#         self.lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-#             initial_learning_rate=self.initial_learning_rate,
-#             decay_steps=self.decay_steps,
-#             decay_rate=self.decay_rate,
-#             staircase=True
-#         )
-#         self.log_dir = log_dir+"/train"
-#         self.writer = tf.summary.create_file_writer(self.log_dir)
+class DelayedExponentialDecay(tf.keras.callbacks.Callback):
+    def __init__(self, initial_learning_rate, decay_steps, decay_rate, start_epoch,log_dir, **kwargs):
+        super().__init__(**kwargs)
+        self.initial_learning_rate = initial_learning_rate
+        self.decay_steps = decay_steps
+        self.decay_rate = decay_rate
+        self.start_epoch = start_epoch
+        self.lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+            initial_learning_rate=self.initial_learning_rate,
+            decay_steps=self.decay_steps,
+            decay_rate=self.decay_rate,
+            staircase=True
+        )
+        self.log_dir = log_dir+"/train"
+        self.writer = tf.summary.create_file_writer(self.log_dir)
 
-#     def on_epoch_begin(self, epoch, logs=None):
-#         if epoch >= self.start_epoch:
-#             # Adjust the learning rate using the schedule
-#             lr = self.lr_schedule(epoch - self.start_epoch)
-#             tf.keras.backend.set_value(self.model.optimizer.lr, lr)
-            
-#     def on_epoch_end(self, epoch, logs=None):
-#         logs = logs or {}
-#         lr = tf.keras.backend.get_value(self.model.optimizer.lr)
-#         logs.update({'lr': lr})
-#         with self.writer.as_default():
-#             # Log the learning rate for TensorBoard
-#             tf.summary.scalar('learning_rate', lr, step=epoch)
-#             self.writer.flush()
+    def on_epoch_begin(self, epoch, logs=None):
+        if epoch >= self.start_epoch:
+            # Adjust the learning rate using the schedule
+            lr = self.lr_schedule(epoch - self.start_epoch)
+            self.model.optimizer.learning_rate.assign(lr)
+
             
             
 def save_evaluated_lc_plots(data,labels,predictions,buffer):

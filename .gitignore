@@ -3,4 +3,5 @@ plots/
 stvid_files/
 checkpoints/
 runs/
-logs/
+old_logs/
+pickleDataset/

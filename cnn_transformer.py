@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau,CosineAnnealingWarmRestar
 import argparse
 from sklearn import preprocessing
 
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler,LabelEncoder
 import matplotlib.pyplot as plt
 import datetime
 from sklearn.metrics import confusion_matrix,ConfusionMatrixDisplay,classification_report
@@ -233,7 +233,7 @@ def train_epoch(model, dataloader, criterion, optimizer, device,progressBar):
     
     for batch in dataloader:
         X, y = batch
-
+        y=y.type(torch.LongTensor)
         # y=y.type(torch.LongTensor)
         X, y = X.to(device), y.to(device)
         
@@ -246,10 +246,10 @@ def train_epoch(model, dataloader, criterion, optimizer, device,progressBar):
         total_loss += loss.item()
         # _, predicted = torch.max(outputs.data, 1)
         _, predicted = torch.max(torch.sigmoid(outputs.data), 1)
-
+ 
         total += y.size(0)
         # correct += (predicted == y).sum().item()
-        correct+=(predicted==torch.max(y.data,1).indices).sum().item()
+        correct+=(predicted==y).sum().item()
         avg_loss = total_loss / len(dataloader)
         accuracy = 100 * correct / total
         progressBar.update(0,advance=1,train_acc=accuracy,train_loss=avg_loss)
@@ -265,7 +265,7 @@ def evaluate(model, dataloader, criterion, device,progressBar):
     with torch.no_grad():
         for batch in dataloader:
             X, y = batch
-            # y=y.type(torch.LongTensor)
+            y=y.type(torch.LongTensor)
 
             X, y = X.to(device), y.to(device)
             
@@ -278,7 +278,7 @@ def evaluate(model, dataloader, criterion, device,progressBar):
 
             total += y.size(0)
             # correct += (predicted == y).sum().item()
-            correct+=(predicted==torch.max(y.data,1).indices).sum().item()
+            correct+=(predicted==y).sum().item()
             avg_loss = total_loss / len(dataloader)
             accuracy = 100 *correct / total
             progressBar.update(0,val_acc=accuracy,val_loss=avg_loss)
@@ -301,7 +301,7 @@ if __name__ == "__main__":
         satelliteNumber=[60,160,300]
 
     trackSize = 500      # Maximum sample points for each track
-    EPOCHS = 200    # Number of epochs for training
+    EPOCHS = 500    # Number of epochs for training
     batchSize = 32        # batch size for training
     history={"train_loss":[],"train_acc":[],"val_loss":[],"val_acc":[]}
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -313,10 +313,9 @@ if __name__ == "__main__":
 
     x,y=mmt.load_data_new()
     classes=[[x] for x in np.unique(y)]
-    print(np.unique(y,return_counts=True))
-    print(classes)
 
-    x=DiscreteWaveletTransform1(x)
+
+    #x=DiscreteWaveletTransform1(x)
 
     # x = DiscreteWaveletTransform(x, wavelet='db4', level=3)
     x=[pad_to_size_interpolate(array,trackSize) for array in x]
@@ -326,10 +325,10 @@ if __name__ == "__main__":
     x=np.array(x)
     y=np.array(y)
 
-    cat=preprocessing.OneHotEncoder().fit(classes)
-    y=cat.transform(y).toarray()
+    le = LabelEncoder()
+    y = le.fit_transform(y)  # Convert categories to unique integers    
     y=torch.Tensor(y)
-
+    
     # Train-Val-Test split
     x_train,x_test,y_train,y_test=train_test_split(x,y,
                                                 shuffle=True,
