@@ -139,7 +139,35 @@ def discrete_wavelet_transform(
 
 
 
+def pad_to_size_constant(array, target_size):
+    """
+    Pads or trims a 1D array to the target size using constant (zero) padding or truncation.
 
+    Parameters:
+    -----------
+    array : numpy.ndarray
+        1D input array
+    target_size : int
+        Desired length of the output array
+
+    Returns:
+    --------
+    numpy.ndarray
+        Array of length `target_size`, padded with zeros or truncated
+    """
+    array = np.asarray(array)
+    if array.ndim != 1:
+        raise ValueError("Input array must be 1-dimensional")
+
+    current_size = len(array)
+
+    if current_size < target_size:
+        # Pad with zeros at the end
+        padding_size = target_size - current_size
+        return np.concatenate([array, np.zeros(padding_size)])
+    else:
+        # Trim the array
+        return array[:target_size]
 
 def pad_to_size_interpolate(array, target_size):
     """
